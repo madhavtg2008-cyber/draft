@@ -1,0 +1,8 @@
+node_modules/
+lexdraft.db
+lexdraft.db-wal
+lexdraft.db-shm
+.env
+.DS_Store
+Thumbs.db
+.claude/

@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LexDraft</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,500;0,600;0,700;1,500&family=EB+Garamond:ital,wght@0,400;0,500;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='black'/><text x='16' y='23' font-family='Georgia' font-size='20' fill='white' text-anchor='middle'>§</text></svg>" />
+</head>
+<body>
+
+  <!-- ===================== SIGN IN ===================== -->
+  <section id="auth" class="auth hidden">
+    <div class="auth-inner">
+      <div class="mark">§</div>
+      <div class="wordmark">LexDraft</div>
+      <h1 class="auth-line"><span id="typewriter"></span></h1>
+      <div class="auth-switch">
+        <button class="auth-tab active" data-tab="login">Sign in</button>
+        <button class="auth-tab" data-tab="register">New client</button>
+      </div>
+      <form id="loginForm" class="auth-form">
+        <input name="email" type="email" required placeholder="Email" autocomplete="username" />
+        <input name="password" type="password" required placeholder="Password" autocomplete="current-password" />
+        <button class="btn-primary" type="submit">Enter</button>
+      </form>
+      <form id="registerForm" class="auth-form hidden">
+        <input name="name" required placeholder="Full name" />
+        <input name="company" placeholder="Company (optional)" />
+        <input name="email" type="email" required placeholder="Email" />
+        <input name="password" type="password" minlength="6" required placeholder="Password, 6+ characters" autocomplete="new-password" />
+        <button class="btn-primary" type="submit">Create account</button>
+      </form>
+      <div id="authError" class="auth-error"></div>
+      <div class="demo">
+        <span>Demo</span>
+        <button type="button" data-email="counsel@lexdraft.test" data-pw="counsel123">Team Head</button>
+        <button type="button" data-email="associate@lexdraft.test" data-pw="associate123">Associate</button>
+        <button type="button" data-email="client@lexdraft.test" data-pw="client123">Client</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== APP ===================== -->
+  <section id="app" class="app hidden">
+    <aside class="rail">
+      <div class="rail-brand"><span class="mark sm">§</span>LexDraft</div>
+      <div class="rail-label">Matters</div>
+      <nav id="matterList" class="matters"></nav>
+      <div class="team-only">
+        <button id="newToggle" class="rail-new">+ New matter</button>
+        <form id="newForm" class="new-form hidden">
+          <label class="nf-label">Matter</label>
+          <input name="title" required placeholder="Matter title, e.g. Share Purchase — Acme" />
+          <input name="counterparty" placeholder="Other side (optional)" />
+          <label class="nf-label">Client</label>
+          <select name="clientId" id="clientSelect"></select>
+          <div id="newClientFields" class="nf-group hidden">
+            <input name="ncName" placeholder="Client's full name" />
+            <input name="ncCompany" placeholder="Company (optional)" />
+            <input name="ncEmail" type="email" placeholder="Client's email" />
+            <small>They'll set their own password by signing up with this email.</small>
+          </div>
+          <label class="nf-label">Opening document</label>
+          <label id="nfDrop" class="nf-drop"><input id="nfFile" type="file" accept=".docx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden /><span id="nfFileName">Drop a Word or PDF file, or click — optional</span></label>
+          <div id="nfError" class="nf-error"></div>
+          <div class="row"><button type="button" id="newCancel" class="link">Cancel</button><button class="btn-primary sm" type="submit">Open matter</button></div>
+        </form>
+      </div>
+      <div class="rail-foot">
+        <div class="me"><div id="meAvatar" class="avatar"></div><div><b id="meName"></b><small id="meRole"></small></div></div>
+        <button id="logoutBtn" class="link">Sign out</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div id="emptyState" class="empty hidden"><div class="mark lg">§</div><p>Select a matter.</p></div>
+
+      <div id="workspace" class="workspace hidden">
+        <header class="caption">
+          <div class="caption-left">
+            <div class="kicker">In the matter of</div>
+            <h1 id="matterTitle" class="title" spellcheck="false"></h1>
+            <div id="matterSub" class="sub"></div>
+          </div>
+          <div class="caption-right">
+            <div class="who"><span class="live"><i></i>Live</span><div id="presence" class="presence"></div></div>
+            <ol id="stepper" class="stepper"></ol>
+          </div>
+        </header>
+
+        <!-- the three sheets: nothing on them but their name -->
+        <div class="desk" id="desk">
+          <button class="card" data-lane="client">
+            <span class="card-badge"></span>
+            <span class="card-num">I</span>
+            <span class="card-name">Client Draft</span>
+            <span class="card-sub">Proposed by the client</span>
+            <span class="card-go">Open <i>→</i></span>
+            <span class="card-drop">Drop Word / PDF to load</span>
+          </button>
+          <button class="card card-clean" data-lane="final">
+            <span class="card-badge"></span>
+            <span class="card-num">II</span>
+            <span class="card-name">Clean Draft</span>
+            <span class="card-sub">The instrument</span>
+            <span class="card-go">Open <i>→</i></span>
+            <span class="card-drop">Drop Word / PDF to load</span>
+          </button>
+          <button class="card card-team" data-lane="team">
+            <span class="card-badge"></span>
+            <span class="card-num">III</span>
+            <span class="card-name">Team Draft</span>
+            <span class="card-sub">Privileged · counsel only</span>
+            <span class="card-go">Open <i>→</i></span>
+            <span class="card-drop">Drop Word / PDF to load</span>
+            <span class="card-seal"><span>§</span>Sealed</span>
+          </button>
+        </div>
+
+        <footer class="ledger"><span id="ledger"></span></footer>
+      </div>
+    </main>
+  </section>
+
+  <!-- ===================== FULL-SCREEN DOCUMENT ===================== -->
+  <section id="doc" class="doc hidden">
+    <header class="doc-bar">
+      <button id="docBack" class="back" title="Back (Esc)">←</button>
+      <div class="doc-id"><span class="num" id="docNum"></span><div><b id="docName"></b><small id="docMatter"></small></div></div>
+      <nav class="doc-tabs" id="docTabs">
+        <button data-view="text">Document</button>
+        <button data-view="changes">Changes <em id="tabChanges"></em></button>
+        <button data-view="history">History</button>
+        <span class="tab-ink"></span>
+      </nav>
+      <div class="doc-right">
+        <span id="docState" class="state"></span>
+        <button id="fmtToggle" class="fmt-toggle" title="Show or hide the formatting toolbar">Format <i>▾</i></button>
+        <select id="tbZoom" class="zoom" title="Zoom">
+          <option value="page">Whole page</option><option value="width">Fit width</option>
+          <option value="0.75">75%</option><option value="1">100%</option><option value="1.25">125%</option><option value="1.5">150%</option>
+        </select>
+        <button class="word" data-export="docx"><svg viewBox="0 0 12 12"><path d="M6 1v7M3 5.5 6 8.5l3-3M1.5 10.5h9"/></svg>Save as Word</button>
+        <button class="word" data-export="pdf"><svg viewBox="0 0 12 12"><path d="M6 1v7M3 5.5 6 8.5l3-3M1.5 10.5h9"/></svg>Save as PDF</button>
+      </div>
+    </header>
+    <div id="docActions" class="doc-actions"></div>
+
+    <!-- Word-style toolbar (Document tab, editable sheets only) -->
+    <div id="toolbar" class="toolbar">
+      <div class="tg">
+        <button data-cmd="undo" title="Undo (Ctrl+Z)">↶</button>
+        <button data-cmd="redo" title="Redo (Ctrl+Y)">↷</button>
+      </div>
+      <div class="tg">
+        <select id="tbStyle" title="Paragraph style">
+          <option value="p">Normal</option><option value="h1">Title</option><option value="h2">Heading 1</option>
+          <option value="h3">Heading 2</option><option value="h4">Heading 3</option><option value="blockquote">Quote</option>
+        </select>
+        <select id="tbFont" title="Font">
+          <option>EB Garamond</option><option>Times New Roman</option><option>Georgia</option><option>Cambria</option>
+          <option>Book Antiqua</option><option>Arial</option><option>Calibri</option><option>Helvetica</option>
+          <option>Verdana</option><option>Courier New</option>
+        </select>
+        <select id="tbSize" title="Font size (pt)"></select>
+      </div>
+      <div class="tg">
+        <button data-cmd="bold" title="Bold (Ctrl+B)"><b>B</b></button>
+        <button data-cmd="italic" title="Italic (Ctrl+I)"><i>I</i></button>
+        <button data-cmd="underline" title="Underline (Ctrl+U)"><u>U</u></button>
+        <button data-cmd="strikeThrough" title="Strikethrough"><s>S</s></button>
+        <button data-cmd="superscript" title="Superscript">x²</button>
+        <button data-cmd="subscript" title="Subscript">x₂</button>
+        <div class="dd"><button data-dd="color" title="Text colour" class="swatch-btn">A<i id="tbColorBar"></i></button>
+          <div class="dd-panel swatches" data-panel="color"></div></div>
+        <div class="dd"><button data-dd="hilite" title="Highlight" class="swatch-btn"><span class="hl">ab</span><i id="tbHiliteBar"></i></button>
+          <div class="dd-panel swatches" data-panel="hilite"></div></div>
+        <button data-cmd="removeFormat" title="Clear formatting">T<sub>✕</sub></button>
+      </div>
+      <div class="tg">
+        <button data-cmd="justifyLeft" title="Align left"><svg viewBox="0 0 16 16"><path d="M2 3h12M2 6.5h8M2 10h12M2 13.5h8"/></svg></button>
+        <button data-cmd="justifyCenter" title="Centre"><svg viewBox="0 0 16 16"><path d="M2 3h12M4 6.5h8M2 10h12M4 13.5h8"/></svg></button>
+        <button data-cmd="justifyRight" title="Align right"><svg viewBox="0 0 16 16"><path d="M2 3h12M6 6.5h8M2 10h12M6 13.5h8"/></svg></button>
+        <button data-cmd="justifyFull" title="Justify"><svg viewBox="0 0 16 16"><path d="M2 3h12M2 6.5h12M2 10h12M2 13.5h12"/></svg></button>
+      </div>
+      <div class="tg">
+        <button data-cmd="insertUnorderedList" title="Bullets"><svg viewBox="0 0 16 16"><circle cx="3" cy="4" r="1"/><circle cx="3" cy="8" r="1"/><circle cx="3" cy="12" r="1"/><path d="M6 4h8M6 8h8M6 12h8"/></svg></button>
+        <button data-cmd="insertOrderedList" title="Numbering"><svg viewBox="0 0 16 16"><text x="1" y="5.5">1</text><text x="1" y="9.5">2</text><text x="1" y="13.5">3</text><path d="M6 4h8M6 8h8M6 12h8"/></svg></button>
+        <button data-cmd="outdent" title="Decrease indent"><svg viewBox="0 0 16 16"><path d="M7 3h7M7 6.5h7M7 10h7M2 13.5h12M5 6 2 8l3 2"/></svg></button>
+        <button data-cmd="indent" title="Increase indent"><svg viewBox="0 0 16 16"><path d="M7 3h7M7 6.5h7M7 10h7M2 13.5h12M2 6l3 2-3 2"/></svg></button>
+        <select id="tbSpacing" title="Line spacing">
+          <option value="">Spacing</option><option value="1">1.0</option><option value="1.15">1.15</option>
+          <option value="1.5">1.5</option><option value="2">2.0</option><option value="2.5">2.5</option>
+        </select>
+      </div>
+      <div class="tg">
+        <div class="dd"><button data-dd="link" title="Link">Link</button>
+          <div class="dd-panel" data-panel="link"><form id="linkForm" class="inline-form"><input name="url" placeholder="https://…" /><button>Add</button></form></div></div>
+        <div class="dd"><button data-dd="table" title="Table">Table</button>
+          <div class="dd-panel" data-panel="table"><div id="gridPick" class="grid-pick"></div><div id="gridLabel" class="grid-label">Insert table</div></div></div>
+        <button id="tbImage" title="Picture">Picture</button>
+        <input id="imgInput" type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden />
+        <button data-insert="rule" title="Horizontal line">―</button>
+        <button data-insert="break" title="Page break">Break</button>
+        <div class="dd"><button data-dd="symbol" title="Symbols">§</button>
+          <div class="dd-panel symbols" data-panel="symbol"></div></div>
+      </div>
+      <div class="tg">
+        <button id="tbFind" title="Find & replace (Ctrl+F)">Find</button>
+        <button id="tbPrint" title="Print">Print</button>
+      </div>
+    </div>
+    <form id="findBar" class="findbar hidden">
+      <input name="find" placeholder="Find" autocomplete="off" />
+      <input name="replace" placeholder="Replace with" autocomplete="off" />
+      <button type="submit">Next</button>
+      <button type="button" data-f="replace">Replace</button>
+      <button type="button" data-f="all">Replace all</button>
+      <span id="findCount"></span>
+      <button type="button" data-f="close" class="x">✕</button>
+    </form>
+
+    <div class="doc-scroll">
+      <div class="page" id="page">
+        <!-- the document and its remarks share one sheet: text on the left, remarks in the margin -->
+        <div class="sheet-scroll view-text" id="sheetScroll">
+          <!-- real pages: white sheets (with page numbers) behind the text, laid out to the document's page size -->
+          <div class="paper-col" id="paperCol">
+            <div class="sheets" id="sheets"></div>
+            <div class="editor rich" id="editor" contenteditable="true" spellcheck="true"></div>
+          </div>
+          <aside class="margin" id="margin">
+            <div class="m-head"><span id="mTitle">Remarks</span><em id="mCount"></em><button type="button" id="mGeneral" class="m-plus" title="Add a remark that isn't tied to a passage">+ Remark</button></div>
+            <!-- appears only when text is selected (or "+ Remark" is clicked), level with the selection -->
+            <form id="mCompose" class="m-compose hidden">
+              <div id="mQuote" class="m-quote hidden"></div>
+              <textarea name="body" rows="2" placeholder="Add a remark…"></textarea>
+              <div class="m-row"><button type="button" id="mCancel" class="m-cancel">Cancel</button><button type="submit">Post</button></div>
+            </form>
+            <div id="mList" class="m-list"></div>
+          </aside>
+        </div>
+        <div class="pane view-changes"></div>
+        <div class="pane view-history"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- brief confirmation after important actions -->
+  <div id="confirm" class="confirm" aria-live="polite"><span class="tick">✓</span><b id="confirmText"></b></div>
+
+  <script src="/app.js"></script>
+  <script src="/editor.js"></script>
+  <script src="/pages.js"></script>
+</body>
+</html>

@@ -1,0 +1,31 @@
+{
+  "name": "lexdraft",
+  "version": "1.0.0",
+  "description": "Three-lane legal drafting workspace: client draft, clean final, privileged team draft.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node --no-warnings server.js",
+    "dev": "node --no-warnings --watch server.js"
+  },
+  "dependencies": {
+    "@fontsource/arimo": "^5.3.0",
+    "@fontsource/carlito": "^5.3.0",
+    "@fontsource/cousine": "^5.3.0",
+    "@fontsource/eb-garamond": "^5.3.0",
+    "@fontsource/tinos": "^5.3.0",
+    "@xmldom/xmldom": "^0.8.15",
+    "docx": "^9.9.0",
+    "express": "^4.21.2",
+    "html-to-docx": "^1.8.0",
+    "html-to-pdfmake": "^2.5.35",
+    "jsdom": "^25.0.1",
+    "jszip": "^3.10.2",
+    "mammoth": "^1.13.0",
+    "pdf-parse": "^1.1.1",
+    "pdfmake": "^0.2.23",
+    "sanitize-html": "^2.18.0"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  }
+}
