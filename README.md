@@ -41,15 +41,26 @@ The database (`lexdraft.db`) is created and filled with demo data on first start
 | Associate | associate@lexdraft.test | associate123 |
 | Client | client@lexdraft.test | client123 |
 
-## Deploying
+## Going live (Render + your own domain)
 
-LexDraft is a long-running Node server. It keeps its data in a SQLite file and pushes live updates over a connection it holds open (Server-Sent Events). So it needs a host that runs a persistent Node process with a persistent disk, such as **Render**, **Railway**, **Fly.io** or any VPS:
+LexDraft runs as one Node server with its data on a disk, so host it somewhere that keeps a disk:
+**Render** works out of the box using `render.yaml`.
 
-- Build command: `npm install`
-- Start command: `npm start`
-- Mount a persistent disk on the project folder, so that `lexdraft.db` survives restarts.
+1. On render.com, choose **New → Blueprint** and pick this GitHub repo.
+2. Fill in the private settings it asks for:
+   - `HEAD_NAME`, `HEAD_EMAIL`, `HEAD_PASSWORD`: your Team Head login. The account is created on first start.
+   - `PUBLIC_URL`: your address, e.g. `https://www.yourfirm.com`.
+   - `SMTP_*` (optional): leave these empty until you set up email.
+3. Choose the **Starter** plan with the **1 GB disk** (about $7–8 a month). The Free plan has no disk and would lose data.
+4. Under **Settings → Custom Domains**, add your domain, then add the DNS records Render shows at your domain registrar (e.g. GoDaddy → DNS). HTTPS is set up automatically.
 
-**Vercel won't run it as-is.** Vercel runs code as short-lived serverless functions, and their disk is temporary. Data would be lost between requests and live updates would drop. To use Vercel, the database would first need to move to a hosted one (such as Postgres or Turso), and live updates to polling or a hosted realtime service.
+On a live server there are **no demo accounts**. The Team Head adds lawyers from the profile menu (**Add a lawyer**). Lawyers and invited clients choose their password with **Set up account** on the sign-in page.
+
+To run it locally with the demo accounts:
+
+```bash
+npm start
+```
 
 ## Project layout
 

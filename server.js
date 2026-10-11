@@ -14,10 +14,16 @@ const htmlToPdfmake = require('html-to-pdfmake');
 const PdfPrinter = require('pdfmake');
 const mammoth = require('mammoth');                  // .docx → HTML (fallback)
 const { docxToHtml } = require('./lib/docx-import'); // .docx → HTML, keeping Word's formatting
+const { sendMail, mailConfigured } = require('./lib/mailer');
+const { TEMPLATES, render: renderTemplate } = require('./lib/templates');
+const { OAuth2Client } = require('google-auth-library');
+const jose = require('jose');
 const pdfParse = require('pdf-parse/lib/pdf-parse.js'); // PDF → text
 
 const PORT = process.env.PORT || 3000;
-const db = new DatabaseSync(path.join(__dirname, 'lexdraft.db'));
+// Serverless hosts (Vercel) only allow writing to /tmp — which is temporary there.
+const DB_PATH = process.env.DB_PATH || (process.env.VERCEL ? '/tmp/lexdraft.db' : path.join(__dirname, 'lexdraft.db'));
+const db = new DatabaseSync(DB_PATH);
 const LANES = ['client', 'final', 'team'];
 const STATUSES = ['drafting', 'client_review', 'negotiation', 'approved', 'executed'];
 // Distinct, legible-on-paper colours handed out to users in order
@@ -49,6 +55,7 @@ db.exec(`
     matter_no TEXT NOT NULL,
     client_id INTEGER REFERENCES users(id),
     counterparty TEXT,
+    matter_date TEXT,         -- a date the lawyer sets for the matter (hearing, deadline, signing…), YYYY-MM-DD
     page_setup TEXT,          -- page size & margins in twips (from an imported Word file); A4 / 1in by default
     status TEXT NOT NULL DEFAULT 'drafting',
     created_by INTEGER REFERENCES users(id),
@@ -95,6 +102,23 @@ db.exec(`
     created_at INTEGER NOT NULL,
     decided_at INTEGER
   );
+  -- who may see a matter (besides the Team Head and the lawyer who opened it), by email
+  CREATE TABLE IF NOT EXISTS matter_access (
+    draft_id INTEGER NOT NULL REFERENCES drafts(id) ON DELETE CASCADE,
+    email TEXT NOT NULL,
+    added_by INTEGER REFERENCES users(id),
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (draft_id, email)
+  );
+  -- private links that let one person into one matter without a password (only a hash is stored)
+  CREATE TABLE IF NOT EXISTS share_links (
+    token_hash TEXT PRIMARY KEY,
+    draft_id INTEGER NOT NULL REFERENCES drafts(id) ON DELETE CASCADE,
+    email TEXT NOT NULL,
+    created_by INTEGER REFERENCES users(id),
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL
+  );
   CREATE TABLE IF NOT EXISTS activity (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     draft_id INTEGER NOT NULL REFERENCES drafts(id) ON DELETE CASCADE,
@@ -104,6 +128,8 @@ db.exec(`
     created_at INTEGER NOT NULL
   );
 `);
+
+try { db.exec('ALTER TABLE drafts ADD COLUMN matter_date TEXT'); } catch { /* already there */ }
 
 // ---------- helpers ----------
 const now = () => Date.now();
@@ -143,6 +169,7 @@ const SANITIZE = {
       'line-height': [/^\d+(\.\d+)?$/, CSS_LEN], 'margin-left': [CSS_LEN], 'padding-left': [CSS_LEN],
       'margin-right': [CSS_LEN], 'margin-top': [CSS_LEN], 'margin-bottom': [CSS_LEN], 'text-indent': [/^-?\d+(\.\d+)?(pt|px|em)$/],
       'text-transform': [/^(uppercase|lowercase|capitalize|none)$/], 'font-variant': [/^(small-caps|normal)$/],
+      'letter-spacing': [/^(normal|-?\d+(\.\d+)?(pt|px|em))$/],
       'text-decoration': [/^[\w\s-]+$/], 'text-decoration-line': [/^[\w\s-]+$/], 'font-weight': [/^(bold|normal|\d{3})$/],
       'font-style': [/^(italic|normal)$/], 'page-break-after': [/^always$/], width: [CSS_LEN, /^auto$/],
       'vertical-align': [/^(sub|super|baseline|top|middle|bottom)$/], border: [/^[\w\s#.(),%-]+$/],
@@ -378,13 +405,24 @@ function upsertRequest(draftId, kind, content, userId) {
 }
 const REQUEST_WORDS = { 'promote-team': 'upload the team draft to the clean draft' };
 
-function canSeeDraft(user, draft) { return draft && (user.role === 'team' || draft.client_id === user.id); }
+// Every matter is private. It is visible only to: the Team Head, the lawyer who opened it,
+// its client, and the email addresses it has been shared with. Checked on every request.
+function hasAccess(user, draftId) {
+  return !!db.prepare('SELECT 1 FROM matter_access WHERE draft_id = ? AND email = ?').get(draftId, String(user.email).toLowerCase());
+}
+function canSeeDraft(user, draft) {
+  if (!draft || !user) return false;
+  return !!user.head || draft.created_by === user.id || draft.client_id === user.id || hasAccess(user, draft.id);
+}
+function grantAccess(draftId, email, byId) {
+  db.prepare('INSERT OR IGNORE INTO matter_access (draft_id, email, added_by, created_at) VALUES (?,?,?,?)').run(draftId, String(email).toLowerCase().trim(), byId ?? null, now());
+}
 function canSeeLane(user, lane) { return lane !== 'team' || user.role === 'team'; }
 function canEditLane(user, draft, lane) {
   // nobody types into the clean draft: it only ever changes when the Team Head uploads the team draft
   if (lane === 'final') return false;
   if (user.role === 'team') return true;
-  return lane === 'client' && draft.client_id === user.id && !['approved', 'executed'].includes(draft.status);
+  return lane === 'client' && canSeeDraft(user, draft) && !['approved', 'executed'].includes(draft.status);
 }
 
 function laneInfo(user, draft, lane) {
@@ -398,7 +436,22 @@ function laneInfo(user, draft, lane) {
 }
 
 // ---------- seed ----------
-if (db.prepare('SELECT COUNT(*) AS n FROM users').get().n === 0) {
+// Demo accounts & sample matters exist only for local testing. On a live server (NODE_ENV=production,
+// or DEMO=false) none are created: the Team Head comes from the HEAD_EMAIL / HEAD_PASSWORD / HEAD_NAME settings.
+const LIVE = process.env.NODE_ENV === 'production' || !!process.env.RENDER;
+const DEMO = process.env.DEMO ? process.env.DEMO === 'true' : !LIVE;
+if (!DEMO && db.prepare('SELECT COUNT(*) AS n FROM users').get().n === 0) {
+  const email = String(process.env.HEAD_EMAIL || '').toLowerCase().trim();
+  const pw = String(process.env.HEAD_PASSWORD || '');
+  if (email && pw.length >= 8) {
+    db.prepare('INSERT INTO users (name, email, role, title, color, head, pass_hash, created_at) VALUES (?,?,?,?,?,?,?,?)')
+      .run(process.env.HEAD_NAME || 'Team Head', email, 'team', 'Team Head', PALETTE[0], 1, hashPassword(pw), now());
+    console.log(`Created the Team Head account for ${email}`);
+  } else {
+    console.warn('No accounts yet: set HEAD_EMAIL and HEAD_PASSWORD (8+ characters) to create the Team Head.');
+  }
+}
+if (DEMO && db.prepare('SELECT COUNT(*) AS n FROM users').get().n === 0) {
   const addUser = db.prepare('INSERT INTO users (name, email, role, title, color, head, pass_hash, created_at) VALUES (?,?,?,?,?,?,?,?)');
   const mk = (...a) => getUser(addUser.run(...a).lastInsertRowid);
   const counsel = mk('Priya Raman', 'counsel@lexdraft.test', 'team', 'Team Head', PALETTE[0], 1, hashPassword('counsel123'), now());
@@ -437,6 +490,8 @@ This Agreement shall be governed by the laws of India, and the courts at Mumbai 
     + '<p><span style="background-color: #fff3a3"><strong>[TEAM NOTE:</strong> Client wants a 3-year term. Fallback position is 30 months. Do NOT share with the client.]</span></p>', associate);
   // associate asks for the team draft to go into the clean draft (awaits the Team Head)
   upsertRequest(draftId, 'promote-team', stripTeamNotes(latest(draftId, 'team').content), associate.id);
+  grantAccess(draftId, associate.email, counsel.id);
+  grantAccess(draftId, client.email, counsel.id);
 
   const c = db.prepare('INSERT INTO comments (draft_id, lane, body, quote, author_id, created_at) VALUES (?,?,?,?,?,?)');
   c.run(draftId, 'client', 'We need a longer term — our product roadmap runs three years.', 'three (3) years', client.id, t - 3500000);
@@ -487,6 +542,7 @@ const laneChanged = (draftId, lane, user, kind = 'edit') =>
 
 // ---------- app ----------
 const app = express();
+app.set('trust proxy', 1); // Render/other hosts sit behind a proxy: use the real https address
 app.use(express.json({ limit: '15mb' })); // room for pasted images
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -496,9 +552,24 @@ function parseCookies(req) {
     return [c.slice(0, i).trim(), decodeURIComponent(c.slice(i + 1))];
   }));
 }
+// Sessions. With SESSION_SECRET set (do this on any serverless host), the cookie itself is signed,
+// so every server instance can verify it. Without it, sessions live in the database.
+const SESSION_SECRET = process.env.SESSION_SECRET && process.env.SESSION_SECRET.length >= 16 ? process.env.SESSION_SECRET : null;
+const SESSION_DAYS = 14;
+const sign = (data) => crypto.createHmac('sha256', SESSION_SECRET).update(data).digest('base64url');
+function userFromToken(token) {
+  if (!token) return null;
+  if (SESSION_SECRET && token.startsWith('s.')) {
+    const [, uid, exp, sig] = token.split('.');
+    const expected = sign(`${uid}.${exp}`);
+    if (!sig || sig.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
+    if (Number(exp) < Date.now()) return null;
+    return getUser(Number(uid)) || null;
+  }
+  return db.prepare('SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ?').get(token) || null;
+}
 function auth(req, res, next) {
-  const token = parseCookies(req).lex_session;
-  const row = token && db.prepare('SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ?').get(token);
+  const row = userFromToken(parseCookies(req).lex_session);
   if (!row) return res.status(401).json({ error: 'Not signed in' });
   req.user = row;
   next();
@@ -516,17 +587,24 @@ function laneParam(req, res, next) {
   if (!LANES.includes(lane) || !canSeeLane(req.user, lane)) return res.status(404).json({ error: 'Unknown lane' });
   next();
 }
+const SECURE = process.env.VERCEL || process.env.RENDER || process.env.NODE_ENV === 'production' ? '; Secure' : '';
 function startSession(res, userId) {
-  const token = crypto.randomBytes(32).toString('hex');
-  db.prepare('INSERT INTO sessions (token, user_id, created_at) VALUES (?,?,?)').run(token, userId, now());
-  res.setHeader('Set-Cookie', `lex_session=${token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${60 * 60 * 24 * 14}`);
+  let token;
+  if (SESSION_SECRET) {
+    const exp = Date.now() + SESSION_DAYS * 86400000;
+    token = `s.${userId}.${exp}.${sign(`${userId}.${exp}`)}`;
+  } else {
+    token = crypto.randomBytes(32).toString('hex');
+    db.prepare('INSERT INTO sessions (token, user_id, created_at) VALUES (?,?,?)').run(token, userId, now());
+  }
+  res.setHeader('Set-Cookie', `lex_session=${token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${60 * 60 * 24 * SESSION_DAYS}${SECURE}`);
 }
 
 // --- auth
 app.post('/api/auth/login', (req, res) => {
   const { email, password } = req.body || {};
   const user = db.prepare('SELECT * FROM users WHERE email = ?').get(String(email || '').toLowerCase().trim());
-  if (user && !user.pass_hash) return res.status(401).json({ error: 'Your lawyer has set up this account — choose a password under "New client" to activate it' });
+  if (user && !user.pass_hash) return res.status(401).json({ error: 'Your lawyer has set up this account — choose your password under "Set up account" to activate it' });
   if (!user || !verifyPassword(String(password || ''), user.pass_hash)) return res.status(401).json({ error: 'Invalid email or password' });
   startSession(res, user.id);
   res.json({ user: publicUser(user) });
@@ -536,7 +614,7 @@ app.post('/api/auth/register', (req, res) => {
   if (!name || !email || !password || password.length < 6) return res.status(400).json({ error: 'Name, email and a 6+ character password are required' });
   const em = String(email).toLowerCase().trim();
   const existing = db.prepare('SELECT * FROM users WHERE email = ?').get(em);
-  if (existing && existing.role === 'client' && !existing.pass_hash) {
+  if (existing && !existing.pass_hash) { // invited by the firm (client or lawyer): claim it
     // a client the firm added with a new matter: claim the account by setting a password
     db.prepare('UPDATE users SET pass_hash = ?, title = COALESCE(title, ?) WHERE id = ?').run(hashPassword(password), company || null, existing.id);
     startSession(res, existing.id);
@@ -551,8 +629,8 @@ app.post('/api/auth/register', (req, res) => {
 });
 app.post('/api/auth/logout', (req, res) => {
   const token = parseCookies(req).lex_session;
-  if (token) db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
-  res.setHeader('Set-Cookie', 'lex_session=; HttpOnly; Path=/; Max-Age=0');
+  if (token && !token.startsWith('s.')) db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
+  res.setHeader('Set-Cookie', `lex_session=; HttpOnly; Path=/; Max-Age=0${SECURE}`);
   res.json({ ok: true });
 });
 app.get('/api/me', auth, (req, res) => res.json({ user: publicUser(req.user) }));
@@ -563,16 +641,17 @@ app.get('/api/clients', auth, teamOnly, (req, res) => {
 // --- drafts
 app.get('/api/drafts', auth, (req, res) => {
   const base = 'SELECT d.*, c.name AS client_name FROM drafts d LEFT JOIN users c ON c.id = d.client_id';
-  const rows = req.user.role === 'team'
+  const rows = req.user.head
     ? db.prepare(`${base} ORDER BY d.updated_at DESC`).all()
-    : db.prepare(`${base} WHERE d.client_id = ? ORDER BY d.updated_at DESC`).all(req.user.id);
+    : db.prepare(`${base} WHERE d.created_by = ? OR d.client_id = ? OR EXISTS (SELECT 1 FROM matter_access a WHERE a.draft_id = d.id AND a.email = ?) ORDER BY d.updated_at DESC`)
+      .all(req.user.id, req.user.id, String(req.user.email).toLowerCase());
   res.json({ drafts: rows });
 });
 
 // Open a new matter. The client can be an existing one, or a brand-new client added right here:
 // they get an invited account and choose their own password the first time they sign up with that email.
 app.post('/api/drafts', auth, teamOnly, (req, res) => {
-  const { title, clientId, newClient, counterparty, contentHtml, sourceName, page } = req.body || {};
+  const { title, clientId, newClient, counterparty, contentHtml, sourceName, page, matterDate } = req.body || {};
   if (!title || !String(title).trim()) return res.status(400).json({ error: 'Matter title is required' });
   let cid = clientId ? Number(clientId) : null;
   if (cid && !db.prepare("SELECT 1 FROM users WHERE id = ? AND role = 'client'").get(cid)) return res.status(400).json({ error: 'Unknown client' });
@@ -588,11 +667,15 @@ app.post('/api/drafts', auth, teamOnly, (req, res) => {
   const count = db.prepare('SELECT COUNT(*) AS n FROM drafts').get().n;
   const matterNo = `LD-${new Date().getFullYear()}-${String(140 + count + 1).padStart(4, '0')}`;
   const setup = cleanPage(page);
-  const id = db.prepare('INSERT INTO drafts (title, matter_no, client_id, counterparty, page_setup, status, created_by, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)')
-    .run(String(title).trim(), matterNo, cid, String(counterparty || '').trim() || null, setup ? JSON.stringify(setup) : null, 'drafting', req.user.id, t, t).lastInsertRowid;
+  const md = /^\d{4}-\d{2}-\d{2}$/.test(String(matterDate || '')) ? matterDate : null;
+  const id = db.prepare('INSERT INTO drafts (title, matter_no, client_id, counterparty, page_setup, matter_date, status, created_by, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)')
+    .run(String(title).trim(), matterNo, cid, String(counterparty || '').trim() || null, setup ? JSON.stringify(setup) : null, md, 'drafting', req.user.id, t, t).lastInsertRowid;
   const imported = contentHtml && clean(contentHtml).replace(/<[^>]+>/g, '').trim() ? clean(contentHtml) : null;
-  const body = imported || textToHtml(`${String(title).toUpperCase()}\n1. PARTIES\nThis Agreement is made between …\n2. RECITALS\nWhereas …\n3. TERMS\n…`);
-  const note = imported ? `Imported ${String(sourceName || 'document').slice(0, 100)}` : 'Initial draft';
+  const cl = cid ? getUser(cid) : null;
+  const tpl = TEMPLATES.some((x) => x.id === req.body?.template) ? req.body.template : 'blank';
+  const body = imported || templateHtml(tpl, { title, client: cl?.name, company: cl?.title, counterparty, lawyer: req.user.name });
+  if (cl) grantAccess(id, cl.email, req.user.id);
+  const note = imported ? `Imported ${String(sourceName || 'document').slice(0, 100)}` : `New ${TEMPLATES.find((x) => x.id === tpl).name.toLowerCase()}`;
   for (const lane of LANES) initLane(id, lane, body, req.user, note);
   logActivity(id, 'final', 'opened the matter', req.user.id);
   res.json({ draft: db.prepare('SELECT * FROM drafts WHERE id = ?').get(id) });
@@ -661,18 +744,43 @@ app.get('/api/drafts/:id', auth, loadDraft, (req, res) => {
 app.patch('/api/drafts/:id', auth, loadDraft, (req, res) => {
   const { status, title } = req.body || {};
   const d = req.draft;
+  if ('matterDate' in (req.body || {}) && req.user.role === 'team') {
+    const md = String(req.body.matterDate || '');
+    if (md && !/^\d{4}-\d{2}-\d{2}$/.test(md)) return res.status(400).json({ error: 'Invalid date' });
+    db.prepare('UPDATE drafts SET matter_date = ?, updated_at = ? WHERE id = ?').run(md || null, now(), d.id);
+    logActivity(d.id, null, md ? `set the matter date to ${md}` : 'cleared the matter date', req.user.id);
+  }
   if (status) {
     if (!STATUSES.includes(status)) return res.status(400).json({ error: 'Unknown status' });
-    if (req.user.role !== 'team' && !(status === 'approved' && ['client_review', 'negotiation'].includes(d.status)))
+    if (req.user.role !== 'team' && !(status === 'approved' && !['approved', 'executed'].includes(d.status)))
       return res.status(403).json({ error: 'Not permitted' });
     db.prepare('UPDATE drafts SET status = ?, updated_at = ? WHERE id = ?').run(status, now(), d.id);
     logActivity(d.id, null, `set the status to ${status.replace('_', ' ')}`, req.user.id);
   }
-  if (title && req.user.role === 'team') db.prepare('UPDATE drafts SET title = ? WHERE id = ?').run(String(title).trim(), d.id);
+  if (req.user.role === 'team') {
+    if (title !== undefined) {
+      const t = String(title).trim().slice(0, 200);
+      if (!t) return res.status(400).json({ error: 'The matter needs a name' });
+      if (t !== d.title) { db.prepare('UPDATE drafts SET title = ? WHERE id = ?').run(t, d.id); logActivity(d.id, null, `renamed the matter to "${t}"`, req.user.id); }
+    }
+    if ('counterparty' in (req.body || {})) {
+      db.prepare('UPDATE drafts SET counterparty = ? WHERE id = ?').run(String(req.body.counterparty || '').trim().slice(0, 200) || null, d.id);
+    }
+    if ('clientId' in (req.body || {})) {
+      const cid = req.body.clientId ? Number(req.body.clientId) : null;
+      const cl = cid ? db.prepare("SELECT * FROM users WHERE id = ? AND role = 'client'").get(cid) : null;
+      if (cid && !cl) return res.status(400).json({ error: 'Unknown client' });
+      db.prepare('UPDATE drafts SET client_id = ? WHERE id = ?').run(cl ? cl.id : null, d.id);
+      if (cl) grantAccess(d.id, cl.email, req.user.id); // the new client can see the matter
+      logActivity(d.id, null, cl ? `set the client to ${cl.name}` : 'removed the client', req.user.id);
+    }
+    db.prepare('UPDATE drafts SET updated_at = ? WHERE id = ?').run(now(), d.id);
+  }
   broadcast(d.id, 'draft', { by: req.user.name });
   res.json({ ok: true });
 });
 
+// Deleting a matter removes everything in it: only the legal team (Team Head and associates) who can see it — never clients.
 app.delete('/api/drafts/:id', auth, teamOnly, loadDraft, (req, res) => {
   broadcast(req.draft.id, 'deleted', { by: req.user.name });
   db.prepare('DELETE FROM drafts WHERE id = ?').run(req.draft.id);
@@ -721,11 +829,34 @@ app.post('/api/drafts/:id/lanes/:lane/changes', auth, headOnly, loadDraft, laneP
 });
 
 // Upload the team draft to the clean draft. Only ever runs as the Team Head.
-function uploadToClean(draftId, content, head, note) {
+// everyone outside the firm who may see the matter
+function matterClients(draftId) {
+  const d = db.prepare('SELECT * FROM drafts WHERE id = ?').get(draftId);
+  const emails = new Set(db.prepare('SELECT email FROM matter_access WHERE draft_id = ?').all(draftId).map((r) => r.email));
+  if (d?.client_id) emails.add(getUser(d.client_id)?.email);
+  return [...emails].filter(Boolean).map((e) => db.prepare('SELECT * FROM users WHERE email = ?').get(e) || { email: e, role: 'client' })
+    .filter((u) => u.role !== 'team');
+}
+function notifyCleanDraft(draftId, head, origin) {
+  const d = db.prepare('SELECT * FROM drafts WHERE id = ?').get(draftId);
+  for (const c of matterClients(draftId)) {
+    const link = makeShareLink(draftId, c.email, head.id, origin);
+    sendMail({
+      to: c.email,
+      subject: `Clean draft updated — ${d.title}`,
+      heading: 'Your clean draft has been updated',
+      lines: [`Dear ${c.name || 'client'},`, `${head.name} has updated the clean draft of "${d.title}" (${d.matter_no}).`, 'Use the button below to read it. The link is personal to you.'],
+      button: 'Open the clean draft', url: link,
+      footer: 'Sent by LexDraft. If you were not expecting this email, you can ignore it.',
+    });
+  }
+}
+function uploadToClean(draftId, content, head, note, origin) {
   saveLane(draftId, 'final', content, head, note, true);
   // any open "please upload" requests are now answered
   db.prepare("UPDATE requests SET status = 'approved', decided_by = ?, decided_at = ? WHERE draft_id = ? AND status = 'pending'").run(head.id, now(), draftId);
   logActivity(draftId, 'final', 'uploaded the team draft to the clean draft', head.id);
+  notifyCleanDraft(draftId, head, origin);
   laneChanged(draftId, 'final', head, 'promote');
 }
 
@@ -739,7 +870,7 @@ app.post('/api/drafts/:id/promote', auth, teamOnly, loadDraft, (req, res) => {
     broadcast(req.draft.id, 'draft', { by: req.user.name, kind: 'request' });
     return res.status(202).json({ requested: true });
   }
-  uploadToClean(req.draft.id, content, req.user, 'Uploaded from the team draft');
+  uploadToClean(req.draft.id, content, req.user, 'Uploaded from the team draft', originOf(req));
   res.json({ ok: true });
 });
 
@@ -757,7 +888,7 @@ app.post('/api/drafts/:id/requests/:rid', auth, teamOnly, loadDraft, (req, res) 
   }
   const status = { approve: 'approved', decline: 'declined', withdraw: 'withdrawn' }[decision];
   db.prepare('UPDATE requests SET status = ?, decided_by = ?, decided_at = ? WHERE id = ?').run(status, req.user.id, now(), r.id);
-  if (decision === 'approve') uploadToClean(req.draft.id, r.content, req.user, `Uploaded at ${requester.name}'s request`);
+  if (decision === 'approve') uploadToClean(req.draft.id, r.content, req.user, `Uploaded at ${requester.name}'s request`, originOf(req));
   logActivity(req.draft.id, 'team', decision === 'withdraw' ? `withdrew a request to ${REQUEST_WORDS[r.kind]}`
     : `${status} ${requester.name}'s request to ${REQUEST_WORDS[r.kind]}`, req.user.id);
   broadcast(req.draft.id, 'draft', { by: req.user.name, kind: status });
@@ -914,6 +1045,177 @@ app.get('/api/drafts/:id/lanes/:lane/pdf', auth, loadDraft, laneParam, (req, res
   }
 });
 
+// ---------- templates: new documents made inside LexDraft ----------
+function templateHtml(id, ctx) {
+  const html = clean(textToHtml(renderTemplate(id, ctx)));
+  return id === 'blank' ? `${html}<p><br /></p>` : html;
+}
+function draftContext(d, user) {
+  const cl = d.client_id ? getUser(d.client_id) : null;
+  return { title: d.title, client: cl?.name, company: cl?.title, counterparty: d.counterparty, lawyer: user.name };
+}
+app.get('/api/templates', auth, teamOnly, (req, res) => res.json({ templates: TEMPLATES }));
+// start the team draft afresh from a template (the old text stays in History)
+app.post('/api/drafts/:id/lanes/:lane/new-document', auth, teamOnly, loadDraft, laneParam, (req, res) => {
+  const { lane } = req.params;
+  if (lane !== 'team') return res.status(400).json({ error: 'New documents are started in the team draft' });
+  const tpl = TEMPLATES.find((x) => x.id === req.body?.template) || TEMPLATES[0];
+  saveLane(req.draft.id, lane, templateHtml(tpl.id, draftContext(req.draft, req.user)), req.user, `New document: ${tpl.name}`, true);
+  logActivity(req.draft.id, lane, `started a new document (${tpl.name.toLowerCase()})`, req.user.id);
+  laneChanged(req.draft.id, lane, req.user);
+  res.json({ lane: laneInfo(req.user, req.draft, lane) });
+});
+
+// ---------- sharing: private links into one matter ----------
+const LINK_DAYS = 30;
+const hashToken = (t) => crypto.createHash('sha256').update(String(t)).digest('hex');
+const originOf = (req) => process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`;
+function makeShareLink(draftId, email, byId, origin) {
+  const token = crypto.randomBytes(24).toString('base64url');
+  db.prepare('INSERT INTO share_links (token_hash, draft_id, email, created_by, created_at, expires_at) VALUES (?,?,?,?,?,?)')
+    .run(hashToken(token), draftId, String(email).toLowerCase(), byId ?? null, now(), now() + LINK_DAYS * 86400000);
+  return `${origin || process.env.PUBLIC_URL || `http://localhost:${PORT}`}/join/${token}`;
+}
+const linkRow = (token) => db.prepare('SELECT * FROM share_links WHERE token_hash = ? AND expires_at > ?').get(hashToken(token), now());
+const userByEmail = (email) => db.prepare('SELECT * FROM users WHERE email = ?').get(String(email).toLowerCase().trim());
+function ensureClient(email, name) {
+  const em = String(email).toLowerCase().trim();
+  const existing = userByEmail(em);
+  if (existing) return existing;
+  const id = db.prepare('INSERT INTO users (name, email, role, color, pass_hash, created_at) VALUES (?,?,?,?,?,?)')
+    .run(String(name || em.split('@')[0]).trim().slice(0, 80), em, 'client', nextColor(), '', now()).lastInsertRowid;
+  return getUser(id);
+}
+
+// who can see this matter
+app.get('/api/drafts/:id/access', auth, teamOnly, loadDraft, (req, res) => {
+  const d = req.draft;
+  const rows = db.prepare('SELECT email, created_at FROM matter_access WHERE draft_id = ? ORDER BY created_at').all(d.id);
+  const people = rows.map((r) => {
+    const u = userByEmail(r.email);
+    return { email: r.email, name: u?.name || null, role: u?.role || 'client', active: !!u?.pass_hash, removable: true };
+  });
+  const head = db.prepare('SELECT * FROM users WHERE head = 1').get();
+  const creator = d.created_by ? getUser(d.created_by) : null;
+  res.json({ people, always: [head, creator].filter(Boolean).filter((u, i, a) => a.findIndex((x) => x.id === u.id) === i).map(publicUser) });
+});
+
+// share with someone by email: they get access and a personal link (emailed to them)
+app.post('/api/drafts/:id/share', auth, teamOnly, loadDraft, async (req, res) => {
+  const email = String(req.body?.email || '').toLowerCase().trim();
+  const name = String(req.body?.name || '').trim().slice(0, 80);
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return res.status(400).json({ error: 'Enter a valid email address' });
+  const d = req.draft;
+  const user = ensureClient(email, name);
+  grantAccess(d.id, email, req.user.id);
+  if (!d.client_id && user.role === 'client') db.prepare('UPDATE drafts SET client_id = ? WHERE id = ?').run(user.id, d.id);
+  logActivity(d.id, null, `shared the matter with ${email}`, req.user.id);
+  if (user.role === 'team') return res.json({ team: true, emailed: false }); // colleagues simply sign in
+  const link = makeShareLink(d.id, email, req.user.id, originOf(req));
+  if (req.body?.notify === false) { // "Copy link": share without sending an email
+    broadcast(d.id, 'draft', { by: req.user.name, kind: 'share' });
+    return res.json({ link, emailed: false, copied: true });
+  }
+  const mail = await sendMail({
+    to: email,
+    subject: `${req.user.name} shared "${d.title}" with you`,
+    heading: 'A matter has been shared with you',
+    lines: [`${name ? `Dear ${name},` : 'Hello,'}`, `${req.user.name} has shared the matter "${d.title}" (${d.matter_no}) with you on LexDraft.`,
+      'Open it with the button below — no password needed. You will be asked for your name.'],
+    button: 'Open the matter', url: link,
+    footer: `This link is personal to you and works for ${LINK_DAYS} days. Please don't forward it.`,
+  });
+  broadcast(d.id, 'draft', { by: req.user.name, kind: 'share' });
+  res.json({ link, emailed: mail.ok && mailConfigured, outbox: mail.ok && !mailConfigured });
+});
+
+// stop sharing with someone
+app.delete('/api/drafts/:id/access/:email', auth, teamOnly, loadDraft, (req, res) => {
+  const email = String(req.params.email).toLowerCase();
+  db.prepare('DELETE FROM matter_access WHERE draft_id = ? AND email = ?').run(req.draft.id, email);
+  db.prepare('DELETE FROM share_links WHERE draft_id = ? AND email = ?').run(req.draft.id, email);
+  const u = userByEmail(email);
+  if (u && req.draft.client_id === u.id) db.prepare('UPDATE drafts SET client_id = NULL WHERE id = ?').run(req.draft.id);
+  logActivity(req.draft.id, null, `stopped sharing the matter with ${email}`, req.user.id);
+  res.json({ ok: true });
+});
+
+// opening a share link: show what it is, then let the person in after they give their name
+app.get('/api/join/:token', (req, res) => {
+  const row = linkRow(req.params.token);
+  if (!row) return res.status(404).json({ error: 'This link has expired or is no longer valid. Ask your lawyer for a new one.' });
+  const d = db.prepare('SELECT * FROM drafts WHERE id = ?').get(row.draft_id);
+  const by = row.created_by ? getUser(row.created_by) : null;
+  res.json({ matter: { title: d.title, matter_no: d.matter_no }, email: row.email, name: userByEmail(row.email)?.name || '', invitedBy: by?.name || null });
+});
+app.post('/api/join/:token', (req, res) => {
+  const row = linkRow(req.params.token);
+  if (!row) return res.status(404).json({ error: 'This link has expired or is no longer valid. Ask your lawyer for a new one.' });
+  const name = String(req.body?.name || '').trim().slice(0, 80);
+  if (!name) return res.status(400).json({ error: 'Please enter your name' });
+  let user = ensureClient(row.email, name);
+  if (user.role === 'client' && user.name !== name) { db.prepare('UPDATE users SET name = ? WHERE id = ?').run(name, user.id); user = getUser(user.id); }
+  grantAccess(row.draft_id, row.email, row.created_by);
+  startSession(res, user.id);
+  res.json({ user: publicUser(user), draftId: row.draft_id });
+});
+
+// ---------- the legal team: the Team Head invites lawyers ----------
+app.get('/api/team', auth, headOnly, (req, res) => {
+  res.json({ team: db.prepare("SELECT id, name, email, title, head, pass_hash != '' AS active FROM users WHERE role = 'team' ORDER BY head DESC, name").all() });
+});
+app.post('/api/team', auth, headOnly, (req, res) => {
+  const name = String(req.body?.name || '').trim().slice(0, 80);
+  const email = String(req.body?.email || '').toLowerCase().trim();
+  if (!name || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return res.status(400).json({ error: 'Enter their name and a valid email' });
+  const existing = userByEmail(email);
+  if (existing?.role === 'team') return res.status(409).json({ error: 'They are already on the team' });
+  if (existing) return res.status(409).json({ error: 'That email belongs to a client account' });
+  db.prepare('INSERT INTO users (name, email, role, title, color, pass_hash, created_at) VALUES (?,?,?,?,?,?,?)')
+    .run(name, email, 'team', String(req.body?.title || 'Associate').slice(0, 60), nextColor(), '', now());
+  sendMail({
+    to: email, subject: 'You have been added to LexDraft',
+    heading: 'Welcome to the team', lines: [`Dear ${name},`, `${req.user.name} has added you to the firm's LexDraft workspace.`, 'Open the site, choose "Set up account", and use this email address to choose your password.'],
+    button: 'Set up my account', url: originOf(req),
+  });
+  res.json({ ok: true });
+});
+
+// ---------- sign in with Google / Apple ----------
+// Set GOOGLE_CLIENT_ID (Google Cloud → APIs & Services → Credentials → OAuth client ID, type "Web").
+// Set APPLE_CLIENT_ID (a Services ID) and APPLE_REDIRECT_URI (Apple Developer → Sign in with Apple; needs an https domain).
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || null;
+const APPLE_CLIENT_ID = process.env.APPLE_CLIENT_ID || null;
+const APPLE_REDIRECT_URI = process.env.APPLE_REDIRECT_URI || null;
+const googleClient = GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : null;
+const appleKeys = jose.createRemoteJWKSet(new URL('https://appleid.apple.com/auth/keys'));
+app.get('/api/auth/config', (req, res) => res.json({
+  demo: DEMO,
+  google: GOOGLE_CLIENT_ID, apple: APPLE_CLIENT_ID ? { clientId: APPLE_CLIENT_ID, redirectURI: APPLE_REDIRECT_URI } : null,
+}));
+// a verified email from Google/Apple signs in that person; someone new becomes a client who sees only what's shared with them
+function signInVerified(res, email, name) {
+  const user = ensureClient(email, name);
+  startSession(res, user.id);
+  res.json({ user: publicUser(user) });
+}
+app.post('/api/auth/google', async (req, res) => {
+  if (!googleClient) return res.status(501).json({ error: 'Google sign-in has not been set up for this site yet' });
+  try {
+    const p = (await googleClient.verifyIdToken({ idToken: String(req.body?.credential || ''), audience: GOOGLE_CLIENT_ID })).getPayload();
+    if (!p?.email || !p.email_verified) return res.status(401).json({ error: 'Google did not confirm this email address' });
+    signInVerified(res, p.email, p.name);
+  } catch { res.status(401).json({ error: 'Google sign-in failed — please try again' }); }
+});
+app.post('/api/auth/apple', async (req, res) => {
+  if (!APPLE_CLIENT_ID) return res.status(501).json({ error: 'Apple sign-in has not been set up for this site yet' });
+  try {
+    const { payload } = await jose.jwtVerify(String(req.body?.id_token || ''), appleKeys, { issuer: 'https://appleid.apple.com', audience: APPLE_CLIENT_ID });
+    if (!payload.email) return res.status(401).json({ error: 'Apple did not share an email address' });
+    signInVerified(res, payload.email, String(req.body?.name || '').trim() || payload.email.split('@')[0]);
+  } catch { res.status(401).json({ error: 'Apple sign-in failed — please try again' }); }
+});
+
 // --- SSE stream, scoped to one open draft for presence
 app.get('/api/events', auth, (req, res) => {
   const draftId = Number(req.query.draft) || null;
@@ -934,4 +1236,6 @@ app.get('/api/events', auth, (req, res) => {
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
-app.listen(PORT, () => console.log(`LexDraft running at http://localhost:${PORT}`));
+// Run as a normal server locally (`npm start`); on Vercel the app is imported by api/index.js instead.
+if (require.main === module) app.listen(PORT, () => console.log(`LexDraft running at http://localhost:${PORT}`));
+module.exports = app;

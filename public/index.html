@@ -7,7 +7,40 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,500;0,600;0,700;1,500&family=EB+Garamond:ital,wght@0,400;0,500;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <!-- fonts offered in the editor's font list -->
+  <link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Merriweather&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Lora&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Crimson+Text&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=PT+Serif&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Spectral&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Tinos&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Roboto&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Lato&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Raleway&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Nunito&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Work+Sans&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Arimo&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Carlito&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Source+Code+Pro&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Cousine&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Oswald&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Dancing+Script&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Great+Vibes&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Pacifico&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/styles.css" />
+  <script>try { document.documentElement.dataset.theme = localStorage.getItem('lex_theme') || 'black'; } catch {}</script>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='black'/><text x='16' y='23' font-family='Georgia' font-size='20' fill='white' text-anchor='middle'>§</text></svg>" />
 </head>
 <body>
@@ -20,7 +53,7 @@
       <h1 class="auth-line"><span id="typewriter"></span></h1>
       <div class="auth-switch">
         <button class="auth-tab active" data-tab="login">Sign in</button>
-        <button class="auth-tab" data-tab="register">New client</button>
+        <button class="auth-tab" data-tab="register">Set up account</button>
       </div>
       <form id="loginForm" class="auth-form">
         <input name="email" type="email" required placeholder="Email" autocomplete="username" />
@@ -35,12 +68,34 @@
         <button class="btn-primary" type="submit">Create account</button>
       </form>
       <div id="authError" class="auth-error"></div>
-      <div class="demo">
+      <div class="or"><span>or</span></div>
+      <div class="social">
+        <div id="googleSlot" class="social-slot"></div>
+        <button type="button" id="googleBtn" class="social-btn"><svg viewBox="0 0 18 18"><path fill="#EA4335" d="M9 3.48c1.69 0 2.83.73 3.48 1.34l2.54-2.48C13.46.89 11.43 0 9 0 5.48 0 2.44 2.02.96 4.96l2.91 2.26C4.6 5.05 6.62 3.48 9 3.48z"/><path fill="#4285F4" d="M17.64 9.2c0-.74-.06-1.28-.19-1.84H9v3.34h4.96c-.1.83-.64 2.08-1.84 2.92l2.84 2.2c1.7-1.57 2.68-3.88 2.68-6.62z"/><path fill="#FBBC05" d="M3.88 10.78A5.54 5.54 0 0 1 3.58 9c0-.62.11-1.22.29-1.78L.96 4.96A9.008 9.008 0 0 0 0 9c0 1.45.35 2.82.96 4.04l2.92-2.26z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.84-2.2c-.76.53-1.78.9-3.12.9-2.38 0-4.4-1.57-5.12-3.74L.97 13.04C2.45 15.98 5.48 18 9 18z"/></svg>Continue with Google</button>
+        <button type="button" id="appleBtn" class="social-btn"><svg viewBox="0 0 17 20"><path fill="currentColor" d="M14.2 10.6c0-2.6 2.1-3.8 2.2-3.9-1.2-1.8-3.1-2-3.7-2-1.6-.2-3.1.9-3.9.9-.8 0-2-.9-3.4-.9C3.7 4.8 2 5.8 1.1 7.4c-1.9 3.3-.5 8.1 1.4 10.7.9 1.3 2 2.7 3.4 2.7 1.4-.1 1.9-.9 3.5-.9s2.1.9 3.5.9c1.5 0 2.4-1.3 3.3-2.6 1-1.5 1.5-3 1.5-3.1-.1 0-2.9-1.1-3-4.5zM11.6 2.9c.7-.9 1.2-2.1 1.1-3.3-1 0-2.3.7-3 1.6-.7.8-1.3 2-1.1 3.2 1.1.1 2.3-.6 3-1.5z"/></svg>Continue with Apple</button>
+      </div>
+      <div class="demo hidden">
         <span>Demo</span>
         <button type="button" data-email="counsel@lexdraft.test" data-pw="counsel123">Team Head</button>
         <button type="button" data-email="associate@lexdraft.test" data-pw="associate123">Associate</button>
         <button type="button" data-email="client@lexdraft.test" data-pw="client123">Client</button>
       </div>
+    </div>
+  </section>
+
+  <!-- ===================== JOIN BY SHARED LINK ===================== -->
+  <section id="join" class="auth hidden">
+    <div class="auth-inner">
+      <div class="mark">§</div>
+      <div class="wordmark">LexDraft</div>
+      <p class="join-kicker" id="joinBy">You've been invited to</p>
+      <h1 class="auth-line join-title" id="joinTitle"></h1>
+      <p class="join-sub" id="joinSub"></p>
+      <form id="joinForm" class="auth-form">
+        <input name="name" required maxlength="80" placeholder="Your full name" autocomplete="name" />
+        <button class="btn-primary" type="submit">Open the matter</button>
+      </form>
+      <div id="joinError" class="auth-error"></div>
     </div>
   </section>
 
@@ -56,6 +111,7 @@
           <label class="nf-label">Matter</label>
           <input name="title" required placeholder="Matter title, e.g. Share Purchase — Acme" />
           <input name="counterparty" placeholder="Other side (optional)" />
+          <input name="matterDate" type="date" title="Matter date (optional) — hearing, deadline, signing…" />
           <label class="nf-label">Client</label>
           <select name="clientId" id="clientSelect"></select>
           <div id="newClientFields" class="nf-group hidden">
@@ -64,10 +120,22 @@
             <input name="ncEmail" type="email" placeholder="Client's email" />
             <small>They'll set their own password by signing up with this email.</small>
           </div>
-          <label class="nf-label">Opening document</label>
+          <label class="nf-label">Start from</label>
+          <select name="template" id="nfTemplate"></select>
+          <label class="nf-label">…or open a Word / PDF file</label>
           <label id="nfDrop" class="nf-drop"><input id="nfFile" type="file" accept=".docx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden /><span id="nfFileName">Drop a Word or PDF file, or click — optional</span></label>
           <div id="nfError" class="nf-error"></div>
           <div class="row"><button type="button" id="newCancel" class="link">Cancel</button><button class="btn-primary sm" type="submit">Open matter</button></div>
+        </form>
+      </div>
+      <div class="team-only">
+        <button id="docToggle" class="rail-new">+ New document</button>
+        <form id="docForm" class="new-form hidden">
+          <label class="nf-label">New document</label>
+          <input name="title" required placeholder="Document name, e.g. Board resolution" />
+          <select name="template" id="docTemplate"></select>
+          <div id="docError" class="nf-error"></div>
+          <div class="row"><button type="button" id="docCancel" class="link">Cancel</button><button class="btn-primary sm" type="submit">Create</button></div>
         </form>
       </div>
       <div class="rail-foot">
@@ -85,9 +153,79 @@
             <div class="kicker">In the matter of</div>
             <h1 id="matterTitle" class="title" spellcheck="false"></h1>
             <div id="matterSub" class="sub"></div>
+            <label class="mdate" title="The matter's date — hearing, deadline, signing…">
+              <svg viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="1.5"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3"/></svg>
+              <input type="date" id="matterDate" />
+              <span id="matterDateText" class="mdate-text"></span>
+            </label>
+            <div class="edit-wrap team-only">
+              <button id="editBtn" class="edit-btn" title="Edit the matter's name and details"><svg viewBox="0 0 16 16"><path d="M11.5 2.5l2 2-8 8H3.5v-2z"/></svg>Edit details</button>
+              <form id="editPanel" class="edit-panel hidden">
+                <div class="sp-title">Matter details</div>
+                <label class="ep-field"><span>Name</span><input name="title" required maxlength="200" /></label>
+                <label class="ep-field"><span>Other side</span><input name="counterparty" maxlength="200" placeholder="Optional" /></label>
+                <label class="ep-field"><span>Client</span><select name="clientId" id="epClient"></select></label>
+                <div class="ep-row">
+                  <label class="ep-field"><span>Date</span><input name="matterDate" type="date" /></label>
+                  <label class="ep-field"><span>Stage</span><select name="status">
+                    <option value="drafting">Drafting</option><option value="client_review">Review</option><option value="negotiation">Negotiation</option>
+                    <option value="approved">Approved</option><option value="executed">Executed</option></select></label>
+                </div>
+                <div id="epError" class="ep-error"></div>
+                <div class="ep-actions"><button type="button" id="epCancel" class="ep-link">Cancel</button><button type="submit" class="btn-primary sm">Save changes</button></div>
+                <div class="ep-danger">
+                  <button type="button" id="epDelete" class="ep-delete">Delete matter</button>
+                  <div id="epConfirm" class="ep-confirm hidden">
+                    <p>Delete <b id="epConfirmName"></b> and all its drafts, remarks and history? This can't be undone.</p>
+                    <div class="ep-actions"><button type="button" id="epNo" class="ep-link">Cancel</button><button type="button" id="epYes" class="ep-yes">Yes, delete</button></div>
+                  </div>
+                </div>
+              </form>
+            </div>
           </div>
           <div class="caption-right">
-            <div class="who"><span class="live"><i></i>Live</span><div id="presence" class="presence"></div></div>
+            <div class="who">
+              <span class="live"><i></i>Live</span><div id="presence" class="presence"></div>
+              <div class="profile">
+                <button id="profileBtn" class="profile-btn" title="Profile & theme"></button>
+                <div id="profileMenu" class="profile-menu hidden">
+                  <div class="pm-name" id="pmName"></div>
+                  <div class="pm-sub" id="pmSub"></div>
+                  <div class="pm-label">Theme</div>
+                  <div class="themes">
+                    <button class="theme-opt" data-theme="black" style="--a:#0c0c0c;--b:#fbfaf7"><i></i>Black</button>
+                    <button class="theme-opt" data-theme="white" style="--a:#f3f2ee;--b:#141414"><i></i>White</button>
+                    <button class="theme-opt" data-theme="navy" style="--a:#0d1729;--b:#f4efe2"><i></i>Navy</button>
+                  </div>
+                  <div id="pmTeam" class="pm-team hidden">
+                    <div class="pm-label">Add a lawyer</div>
+                    <form id="teamForm" class="pm-form">
+                      <input name="name" required placeholder="Their name" />
+                      <input name="email" type="email" required placeholder="Their email" />
+                      <button class="btn-primary sm" type="submit">Add to team</button>
+                    </form>
+                    <div id="teamMsg" class="pm-msg"></div>
+                  </div>
+                  <button id="pmOut" class="pm-out">Sign out</button>
+                </div>
+              </div>
+              <div class="share team-only">
+                <button id="shareBtn" class="share-btn">Share matter</button>
+                <div id="sharePanel" class="share-panel hidden">
+                  <div class="sp-title">Share this matter</div>
+                  <p class="sp-note">Only the people listed here can see it. Clients get a private link and come in by entering their name.</p>
+                  <form id="shareForm" class="sp-form">
+                    <input name="email" type="email" required placeholder="Client's email" />
+                    <input name="name" placeholder="Their name (optional)" />
+                    <button class="btn-primary sm" type="submit" title="Give access and email them a private link">Share &amp; email</button>
+                    <button class="sp-copy" type="button" id="shareCopy" title="Give access and copy their private link, without emailing">Copy link</button>
+                  </form>
+                  <div id="shareResult" class="sp-result hidden"></div>
+                  <div class="sp-sub">Who can see it</div>
+                  <div id="shareList" class="sp-list"></div>
+                </div>
+              </div>
+            </div>
             <ol id="stepper" class="stepper"></ol>
           </div>
         </header>
@@ -256,5 +394,6 @@
   <script src="/app.js"></script>
   <script src="/editor.js"></script>
   <script src="/pages.js"></script>
+  <script src="/share.js"></script>
 </body>
 </html>

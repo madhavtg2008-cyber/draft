@@ -6,7 +6,79 @@ const changed = () => ed().dispatchEvent(new Event('input', { bubbles: true }));
 let savedRange = null;
 document.addEventListener('selectionchange', () => {
   const sel = getSelection();
-  if (sel.rangeCount && ed().contains(sel.anchorNode)) { savedRange = sel.getRangeAt(0).cloneRange(); syncToolbar(); }
+  if (sel.rangeCount && ed().contains(sel.anchorNode)) {
+    savedRange = sel.getRangeAt(0).cloneRange();
+    // a chosen format waits for the next typing even if you click elsewhere first;
+    // selecting text instead (to format it directly) or pressing Esc drops it
+    if (pending && !sel.isCollapsed) pending = null;
+    syncToolbar();
+  }
+});
+
+// ----- "type next" formatting, like Word: with nothing selected, choosing a font, size,
+// bold, colour… applies to the next text typed at the cursor.
+let pending = null;   // { font, size, color, bg, bold, italic, underline, strike, vert }
+let pendingAt = null; // [node, offset] of the cursor the pending format belongs to
+function caretStyle() {
+  const n = getSelection().anchorNode;
+  const el = n && (n.nodeType === 1 ? n : n.parentElement);
+  return el && ed().contains(el) ? getComputedStyle(el) : null;
+}
+function typeNext(kind, value) {
+  restoreSelection();
+  const cs = caretStyle(), p = pending || {};
+  const deco = cs?.textDecorationLine || '';
+  const now = {
+    bold: p.bold ?? (cs ? parseInt(cs.fontWeight, 10) >= 600 : false),
+    italic: p.italic ?? cs?.fontStyle === 'italic',
+    underline: p.underline ?? /underline/.test(deco),
+    strike: p.strike ?? /line-through/.test(deco),
+    vert: p.vert ?? null,
+  };
+  const patch = {
+    bold: { bold: !now.bold }, italic: { italic: !now.italic }, underline: { underline: !now.underline },
+    strike: { strike: !now.strike }, sup: { vert: now.vert === 'sup' ? null : 'sup' }, sub: { vert: now.vert === 'sub' ? null : 'sub' },
+    clear: { bold: false, italic: false, underline: false, strike: false, vert: null, color: null, bg: null },
+    font: { font: value }, size: { size: value }, color: { color: value }, bg: { bg: value },
+  }[kind];
+  pending = { ...p, ...patch };
+  const s = getSelection();
+  pendingAt = s.rangeCount ? [s.anchorNode, s.anchorOffset] : null;
+  syncToolbar();
+  setDocState('The next text you type will use this formatting');
+}
+// When typing with a pending format, wrap the typed text in a span carrying it;
+// the cursor stays inside, so the rest of the word/sentence continues in that format.
+ed().addEventListener('keydown', (e) => { if (e.key === 'Escape' && pending) { pending = null; syncToolbar(); setDocState('Formatting choice cleared'); } });
+ed().addEventListener('beforeinput', (e) => {
+  if (!pending || e.inputType !== 'insertText' || !e.data) return;
+  const sel = getSelection();
+  if (!sel.rangeCount) return;
+  e.preventDefault();
+  const r = sel.getRangeAt(0);
+  r.deleteContents();
+  const span = document.createElement('span');
+  const st = span.style, p = pending;
+  if (p.font) st.fontFamily = `'${p.font}'`;
+  if (p.size) st.fontSize = `${p.size}pt`;
+  if (p.color) st.color = p.color;
+  if (p.bg) st.backgroundColor = p.bg;
+  if (p.bold !== undefined) st.fontWeight = p.bold ? 'bold' : 'normal';
+  if (p.italic !== undefined) st.fontStyle = p.italic ? 'italic' : 'normal';
+  if (p.underline !== undefined || p.strike !== undefined) st.textDecoration = [p.underline && 'underline', p.strike && 'line-through'].filter(Boolean).join(' ') || 'none';
+  let inner = span;
+  if (p.vert) { inner = document.createElement(p.vert); span.appendChild(inner); }
+  const text = document.createTextNode(e.data);
+  inner.appendChild(text);
+  r.insertNode(span);
+  const c = document.createRange();
+  c.setStart(text, text.length);
+  c.collapse(true);
+  sel.removeAllRanges();
+  sel.addRange(c);
+  pending = null;
+  pendingAt = null;
+  changed();
 });
 function restoreSelection() {
   ed().focus({ preventScroll: true });
@@ -22,8 +94,9 @@ const insertHtml = (html) => exec('insertHTML', html);
 
 // keep the cursor in the document when toolbar buttons are pressed
 $('#toolbar').addEventListener('mousedown', (e) => { if (e.target.closest('button')) e.preventDefault(); });
-// Formatting only ever touches what is selected. With nothing selected the buttons do
-// nothing (bar a nudge and a hint) — they never reformat a whole paragraph on their own.
+// Text formatting (font, size, bold…) works on the selection, or on what you type next.
+// Paragraph formatting (alignment, lists, spacing, styles) only ever touches what is selected —
+// with nothing selected those buttons do nothing (bar a nudge and a hint).
 const hasSelection = () => !!savedRange && !savedRange.collapsed && ed().contains(savedRange.commonAncestorContainer);
 function needSelection() {
   if (hasSelection()) return true;
@@ -41,6 +114,8 @@ $('#toolbar').addEventListener('click', (e) => {
   if (!b) return;
   const cmd = b.dataset.cmd;
   if (cmd === 'undo' || cmd === 'redo') return exec(cmd);
+  const INLINE = { bold: 'bold', italic: 'italic', underline: 'underline', strikeThrough: 'strike', superscript: 'sup', subscript: 'sub', removeFormat: 'clear' };
+  if (INLINE[cmd]) return hasSelection() ? exec(cmd) : typeNext(INLINE[cmd]);
   if (!needSelection()) return;
   if (ALIGN[cmd]) { isolate().forEach((blk) => (blk.style.textAlign = ALIGN[cmd])); changed(); return syncToolbar(); }
   if (BLOCK_CMDS.includes(cmd)) isolate();
@@ -83,11 +158,12 @@ function isolate() {
 }
 
 // ----- font size (points, like Word)
-const SIZES = [8, 9, 10, 10.5, 11, 12, 13, 14, 16, 18, 20, 22, 24, 28, 32, 36, 48, 60, 72];
+const SIZES = [6, 7, 8, 9, 10, 10.5, 11, 12, 13, 14, 15, 16, 18, 20, 22, 24, 26, 28, 32, 36, 40, 48, 54, 60, 72, 96];
 $('#tbSize').innerHTML = '<option value=""></option>' + SIZES.map((s) => `<option value="${s}">${s}</option>`).join('');
 $('#tbSize').addEventListener('change', (e) => {
   const pt = e.target.value;
-  if (!pt || !needSelection()) return;
+  if (!pt) return;
+  if (!hasSelection()) return typeNext('size', Number(pt));
   exec('fontSize', 7, true); // mark the selection, then swap the marker for the real size
   $$('#editor span[style*="xxx-large"], #editor font[size="7"]').forEach((el) => {
     let span = el;
@@ -96,7 +172,23 @@ $('#tbSize').addEventListener('change', (e) => {
   });
   changed();
 });
-$('#tbFont').addEventListener('change', (e) => { if (needSelection()) exec('fontName', e.target.value, true); });
+// ----- fonts: Word's usual fonts plus a wide set of web fonts, each shown in its own face
+const FONT_GROUPS = {
+  'Serif': ['Times New Roman', 'Georgia', 'Garamond', 'EB Garamond', 'Cambria', 'Book Antiqua', 'Palatino Linotype', 'Bookman Old Style',
+    'Century Schoolbook', 'Constantia', 'Baskerville Old Face', 'Libre Baskerville', 'Merriweather', 'Lora', 'Playfair Display',
+    'Cormorant Garamond', 'Crimson Text', 'PT Serif', 'Noto Serif', 'Source Serif 4', 'Spectral', 'Tinos'],
+  'Sans serif': ['Arial', 'Calibri', 'Aptos', 'Helvetica', 'Segoe UI', 'Verdana', 'Tahoma', 'Trebuchet MS', 'Century Gothic',
+    'Gill Sans MT', 'Franklin Gothic Medium', 'Candara', 'Corbel', 'Lucida Sans Unicode', 'Arial Narrow', 'Inter', 'Roboto',
+    'Open Sans', 'Lato', 'Montserrat', 'Poppins', 'Raleway', 'Nunito', 'Work Sans', 'Source Sans 3', 'Noto Sans', 'Arimo', 'Carlito'],
+  'Monospace': ['Courier New', 'Consolas', 'Lucida Console', 'Roboto Mono', 'Source Code Pro', 'IBM Plex Mono', 'Cousine'],
+  'Display & script': ['Arial Black', 'Impact', 'Oswald', 'Bebas Neue', 'Comic Sans MS', 'Dancing Script', 'Great Vibes', 'Pacifico'],
+};
+$('#tbFont').innerHTML = Object.entries(FONT_GROUPS).map(([group, fonts]) => `<optgroup label="${group}">${
+  fonts.map((f) => `<option value="${f}" style="font-family:'${f}'">${f}</option>`).join('')}</optgroup>`).join('');
+$('#tbFont').addEventListener('change', (e) => {
+  if (!hasSelection()) return typeNext('font', e.target.value);
+  exec('fontName', e.target.value, true);
+});
 $('#tbStyle').addEventListener('change', (e) => { if (!needSelection()) return; isolate(); exec('formatBlock', `<${e.target.value}>`); });
 
 // ----- line spacing on the selected text only
@@ -119,16 +211,16 @@ $('#tbHiliteBar').style.setProperty('--sw', '#fff3a3');
 $('[data-panel="color"]').addEventListener('click', (e) => {
   const b = e.target.closest('[data-sw]'); if (!b) return;
   closeDropdowns();
-  if (!needSelection()) return;
   $('#tbColorBar').style.setProperty('--sw', b.dataset.sw);
+  if (!hasSelection()) return typeNext('color', b.dataset.sw);
   exec('foreColor', b.dataset.sw, true);
 });
 $('[data-panel="hilite"]').addEventListener('click', (e) => {
   const b = e.target.closest('[data-sw]'); if (!b) return;
   const c = b.dataset.sw === 'none' ? 'transparent' : b.dataset.sw;
   closeDropdowns();
-  if (!needSelection()) return;
   $('#tbHiliteBar').style.setProperty('--sw', c);
+  if (!hasSelection()) return typeNext('bg', c);
   exec('hiliteColor', c, true);
 });
 
@@ -255,10 +347,24 @@ function syncToolbar() {
   const block = el.closest('h1,h2,h3,h4,blockquote');
   $('#tbStyle').value = block ? block.tagName.toLowerCase() : 'p';
   const cs = getComputedStyle(el);
-  const pt = Math.round(parseFloat(cs.fontSize) * 0.75 * 2) / 2;
-  $('#tbSize').value = SIZES.includes(pt) ? String(pt) : '';
-  const fam = cs.fontFamily.split(',')[0].replace(/["']/g, '').trim();
-  $('#tbFont').value = [...$('#tbFont').options].some((o) => o.value === fam) ? fam : 'EB Garamond';
+  const pt = pending?.size ?? Math.round(parseFloat(cs.fontSize) * 0.75 * 2) / 2;
+  showOption($('#tbSize'), String(pt));
+  showOption($('#tbFont'), pending?.font ?? cs.fontFamily.split(',')[0].replace(/["']/g, '').trim());
+  if (pending) { // show what the next typing will look like
+    const on = { bold: pending.bold, italic: pending.italic, underline: pending.underline, strikeThrough: pending.strike, superscript: pending.vert === 'sup', subscript: pending.vert === 'sub' };
+    for (const [cmd, v] of Object.entries(on)) if (v !== undefined) $(`#toolbar [data-cmd="${cmd}"]`).classList.toggle('on', !!v);
+  }
+}
+// select a value in a dropdown, adding it if the document uses one that isn't listed
+function showOption(select, value) {
+  if (!value) return;
+  if (![...select.options].some((o) => o.value === value)) {
+    const o = new Option(value, value);
+    o.dataset.extra = '1';
+    select.querySelectorAll('option[data-extra]').forEach((x) => x.remove());
+    select.prepend(o);
+  }
+  select.value = value;
 }
 
 // ================= Find & replace (inline bar, no dialog) =================

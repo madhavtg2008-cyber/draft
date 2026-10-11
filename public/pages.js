@@ -77,26 +77,36 @@ function layoutPages() {
     const bottomOf = (rect) => (rect.bottom - base().top) / scale();
     const charRect = (node, i) => { const r = document.createRange(); r.setStart(node, i); r.setEnd(node, i + 1); const rs = r.getClientRects(); return rs[rs.length - 1] || r.getBoundingClientRect(); };
 
-    // where, inside a text unit, the first line that runs past `limit` begins
+    // The lines of a text unit (top/bottom of each), from the browser's own line boxes.
+    function linesOf(u) {
+      const rects = [];
+      for (const n of ownTextNodes(u)) { const r = document.createRange(); r.selectNodeContents(n); rects.push(...r.getClientRects()); }
+      const lines = [];
+      for (const r of rects.filter((x) => x.height > 0).sort((a, b) => a.top - b.top)) {
+        const t = yOf(r), b = bottomOf(r), last = lines[lines.length - 1];
+        if (last && t < last.bottom - 2) last.bottom = Math.max(last.bottom, b); else lines.push({ top: t, bottom: b });
+      }
+      return lines;
+    }
+    // Where to break a paragraph that runs past `limit`, following Word's widow/orphan control:
+    // at least two lines stay behind and at least two move on — otherwise the whole paragraph moves.
     function lineCut(u, limit) {
+      const lines = linesOf(u);
+      let k = lines.findIndex((l) => l.bottom > limit + 0.5);
+      if (k < 0) return null;
+      const widowControl = u.tagName !== 'H1' && u.tagName !== 'H2' && u.tagName !== 'H3' && u.tagName !== 'H4';
+      if (widowControl && lines.length - k < 2) k -= 1;    // don't strand a single last line on the next page
+      if (k < (widowControl ? 2 : 1)) return 'whole';      // don't leave a single first line behind
       const nodes = ownTextNodes(u);
       const idx = [];
       nodes.forEach((n) => { for (let i = 0; i < n.data.length; i++) if (n.data[i] !== '\n') idx.push([n, i]); });
-      if (!idx.length) return null;
-      let lo = 0, hi = idx.length - 1, first = -1;
-      while (lo <= hi) { // first character whose line ends below the limit
-        const mid = (lo + hi) >> 1;
-        const r = charRect(...idx[mid]);
-        if (r.height && bottomOf(r) > limit) { first = mid; hi = mid - 1; } else lo = mid + 1;
-      }
-      if (first <= 0) return first === 0 ? { node: idx[0][0], offset: idx[0][1], top: yOf(charRect(...idx[0])) } : null;
-      const lineTop = yOf(charRect(...idx[first]));
-      lo = 0; hi = first;
-      while (lo < hi) { // first character on that line
+      const lineTop = lines[k].top;
+      let lo = 0, hi = idx.length - 1;
+      while (lo < hi) { // first character on line k
         const mid = (lo + hi) >> 1;
         if (yOf(charRect(...idx[mid])) >= lineTop - 2) hi = mid; else lo = mid + 1;
       }
-      return { node: idx[lo][0], offset: idx[lo][1], top: yOf(charRect(...idx[lo])) };
+      return idx[lo] ? { node: idx[lo][0], offset: idx[lo][1], top: yOf(charRect(...idx[lo])) } : 'whole';
     }
     // put a spacer so that `target` content starts at `y`, then fine-tune once
     function gapBefore(insert, measure, y) {
@@ -121,11 +131,27 @@ function layoutPages() {
         page++;
         continue;
       }
-      if (bottom <= limit + 0.5) continue;
+      const atPageTop = top <= page * pitch + g.mt + 2;
+      const moveWhole = () => gapBefore(() => {
+        const gap = makeGap(nextTop - top, u.tagName !== 'LI');
+        if (u.tagName === 'LI') u.insertBefore(gap, u.firstChild); else u.parentNode.insertBefore(gap, u);
+        return gap;
+      }, () => yOf(u.tagName === 'LI' ? (ownTextNodes(u)[0] ? charRect(ownTextNodes(u)[0], 0) : u.getBoundingClientRect()) : u.getBoundingClientRect()), nextTop);
+
+      if (bottom <= limit + 0.5) {
+        // Word keeps a heading on the same page as the paragraph that follows it
+        const nx = units[i + 1];
+        if (/^H[1-6]$/.test(u.tagName) && nx && !nx.classList.contains('page-break') && !atPageTop) {
+          const first = ownTextNodes(nx)[0];
+          const nb = first ? bottomOf(charRect(first, 0)) : bottomOf(nx.getBoundingClientRect());
+          if (nb > limit + 0.5) { moveWhole(); page++; i--; continue; }
+        }
+        continue;
+      }
 
       if (isTextUnit(u) && top < limit) {
         const cut = lineCut(u, limit);
-        if (cut && cut.top > top + 2) {             // split the paragraph between lines, like Word
+        if (cut && cut !== 'whole' && cut.top > top + 2) { // split the paragraph between lines, like Word
           gapBefore(() => {
             const gap = makeGap(nextTop - cut.top);
             const after = cut.offset > 0 ? cut.node.splitText(cut.offset) : cut.node;
@@ -139,12 +165,8 @@ function layoutPages() {
         }
       }
       // otherwise move the whole piece to the next page (if it fits on one)
-      if (bottom - top <= g.h - g.mt - g.mb && top > page * pitch + g.mt + 2) {
-        gapBefore(() => {
-          const gap = makeGap(nextTop - top, u.tagName !== 'LI');
-          if (u.tagName === 'LI') u.insertBefore(gap, u.firstChild); else u.parentNode.insertBefore(gap, u);
-          return gap;
-        }, () => yOf(u.tagName === 'LI' ? (ownTextNodes(u)[0] ? charRect(ownTextNodes(u)[0], 0) : u.getBoundingClientRect()) : u.getBoundingClientRect()), nextTop);
+      if (!atPageTop) {
+        moveWhole();
         page++;
         i--;
         continue;
@@ -232,14 +254,15 @@ function chime() {
   } catch { /* no audio available: the message alone will do */ }
 }
 let confirmTimer;
-function confirmDone(text) {
+// The chime is only for uploads to the clean draft; every other confirmation is silent.
+function confirmDone(text, { sound = false } = {}) {
   const el = $('#confirm');
   $('#confirmText').textContent = text;
   el.classList.remove('show'); void el.offsetWidth;
   el.classList.add('show');
   clearTimeout(confirmTimer);
   confirmTimer = setTimeout(() => el.classList.remove('show'), 2600);
-  chime();
+  if (sound) chime();
 }
 
 // ---------- delete a remark (author or Team Head): click Delete, then confirm ----------

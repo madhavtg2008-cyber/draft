@@ -6,3 +6,4 @@ lexdraft.db-shm
 .DS_Store
 Thumbs.db
 .claude/
+outbox/

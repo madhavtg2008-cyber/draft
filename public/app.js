@@ -71,6 +71,8 @@ function transition(fn) {
   const t = document.startViewTransition(fn);
   t.ready.catch(() => {});
   t.finished.catch(() => {});
+  const stop = setTimeout(() => t.skipTransition?.(), 1200); // an animation must never leave the screen frozen
+  t.finished.finally(() => clearTimeout(stop)).catch(() => {});
   return t;
 }
 
@@ -105,6 +107,7 @@ function diffHtml(a, b) {
 
 // ---------- boot & sign in ----------
 window.addEventListener('load', async () => {
+  if (location.pathname.startsWith('/join/')) return showJoin(location.pathname.slice(6)); // a shared link (share.js)
   try { state.me = (await api('GET', '/api/me')).user; await showApp(); }
   catch { showAuth(); }
 });
@@ -186,13 +189,47 @@ $('#logoutBtn').addEventListener('click', async () => {
 
 // ----- matters rail
 async function loadDrafts() { state.drafts = (await api('GET', '/api/drafts')).drafts; renderMatters(); }
+// a matter's own date (YYYY-MM-DD) shown as e.g. "12 Nov 2026"
+const fmtMatterDate = (md) => (md ? new Date(`${md}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '');
 function renderMatters() {
-  $('#matterList').innerHTML = state.drafts.map((d) => `
-    <button class="matter ${state.cur?.draft.id === d.id ? 'on' : ''}" data-id="${d.id}">
-      <b>${esc(d.title)}</b><small>${esc(d.matter_no)} · ${esc(statusLabel(d.status))}</small>
-    </button>`).join('') || '<p class="rail-label">None yet</p>';
+  const team = state.me?.role === 'team'; // the legal team can delete matters; clients never see this
+  $('#matterList').innerHTML = state.drafts.map((d) => state.confirmDel === d.id ? `
+    <div class="matter confirm-del" data-id="${d.id}">
+      <span>Delete <b>${esc(d.title)}</b> and everything in it?</span>
+      <span class="cd-actions"><button data-del-yes="${d.id}">Delete</button><button data-del-no>Cancel</button></span>
+    </div>` : `
+    <div class="matter ${state.cur?.draft.id === d.id ? 'on' : ''}" data-id="${d.id}" role="button" tabindex="0">
+      <b>${esc(d.title)}</b><small>${esc(d.matter_no)} · ${esc(statusLabel(d.status))}${d.matter_date ? ` · ${fmtMatterDate(d.matter_date)}` : ''}</small>
+      ${team ? `<span class="m-trash" data-del="${d.id}" role="button" title="Delete this matter"><svg viewBox="0 0 16 16"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5M7 7v4M9 7v4"/></svg></span>` : ''}
+    </div>`).join('') || '<p class="rail-label">None yet</p>';
 }
-$('#matterList').addEventListener('click', (e) => { const m = e.target.closest('.matter'); if (m) openMatter(Number(m.dataset.id)); });
+async function deleteMatter(id) {
+  const d = state.drafts.find((x) => x.id === id);
+  try {
+    if (state.lane && state.cur?.draft.id === id) await closeDoc(true);
+    await api('DELETE', `/api/drafts/${id}`);
+    state.confirmDel = null;
+    if (lsGet('lex_last') === String(id)) lsSet('lex_last', '');
+    const wasOpen = state.cur?.draft.id === id;
+    if (wasOpen) state.cur = null;
+    await loadDrafts();
+    if (wasOpen) state.drafts[0] ? await openMatter(state.drafts[0].id) : showEmpty();
+    confirmDone(`Deleted “${d?.title || 'matter'}”`);
+  } catch (err) { state.confirmDel = null; renderMatters(); ledger(err.message); }
+}
+$('#matterList').addEventListener('click', (e) => {
+  const trash = e.target.closest('[data-del]');
+  if (trash) { state.confirmDel = Number(trash.dataset.del); return renderMatters(); } // ask first
+  const yes = e.target.closest('[data-del-yes]');
+  if (yes) return deleteMatter(Number(yes.dataset.delYes));
+  if (e.target.closest('[data-del-no]')) { state.confirmDel = null; return renderMatters(); }
+  const m = e.target.closest('.matter:not(.confirm-del)');
+  if (m) openMatter(Number(m.dataset.id));
+});
+$('#matterList').addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && state.confirmDel) { state.confirmDel = null; renderMatters(); }
+  if (e.key === 'Enter' && e.target.matches('.matter[data-id]')) openMatter(Number(e.target.dataset.id));
+});
 // ----- new matter: pick a client or add a new one, optionally start from a Word/PDF file
 const nf = $('#newForm');
 let nfFile = null;
@@ -231,7 +268,7 @@ nf.addEventListener('submit', async (e) => {
   submit.disabled = true;
   $('#nfError').textContent = '';
   try {
-    const body = { title: f.title, counterparty: f.counterparty };
+    const body = { title: f.title, counterparty: f.counterparty, template: f.template, matterDate: f.matterDate };
     if (f.clientId === '__new') body.newClient = { name: f.ncName, company: f.ncCompany, email: f.ncEmail };
     else if (f.clientId) body.clientId = Number(f.clientId);
     if (nfFile) {
@@ -289,6 +326,13 @@ function renderDesk() {
   const title = $('#matterTitle');
   if (document.activeElement !== title) title.textContent = draft.title;
   $('#matterSub').textContent = `${draft.matter_no}  ·  ${draft.client ? `for ${draft.client.name}${draft.client.title ? `, ${draft.client.title}` : ''}` : 'no client assigned'}${draft.counterparty ? `  ·  other side: ${draft.counterparty}` : ''}`;
+  // the matter's date: lawyers can set it, clients see it
+  const md = $('#matterDate');
+  if (document.activeElement !== md) md.value = draft.matter_date || '';
+  md.disabled = state.me.role !== 'team';
+  $('#matterDateText').textContent = draft.matter_date ? fmtMatterDate(draft.matter_date) : (state.me.role === 'team' ? 'Set a date' : '');
+  $('.mdate').classList.toggle('empty', !draft.matter_date);
+  $('.mdate').classList.toggle('hidden', !draft.matter_date && state.me.role !== 'team');
   const idx = STATUSES.findIndex(([k]) => k === draft.status);
   $('#stepper').innerHTML = STATUSES.map(([k, l], i) => `<li data-status="${k}" class="${i < idx ? 'done' : i === idx ? 'now' : ''}"><i></i>${l}</li>`).join('');
   renderPresence(state.cur.presence);
@@ -448,7 +492,7 @@ function renderActions() {
         : hold('promote-team', `Ask ${headName} to upload →`);
     }
   }
-  if (!team && lane === 'final' && ['client_review', 'negotiation'].includes(st)) html += hold('approve', 'Hold to approve this draft');
+  if (!team && lane === 'final' && !['approved', 'executed'].includes(st)) html += hold('approve', 'Hold to approve this draft');
   $('#docActions').innerHTML = html;
 }
 const REQUEST_WORDS = { 'promote-team': 'upload the team draft to the clean draft' };
@@ -818,13 +862,20 @@ async function runAction(btn) {
       const r = await api('POST', `/api/drafts/${id}/promote`);
       const msg = r.requested ? `Request sent — ${headName} will upload it` : 'Uploaded to the clean draft';
       ledger(r.requested ? `Asked ${headName} to upload the team draft to the clean draft.` : 'The team draft was uploaded to the clean draft.');
-      confirmDone(msg);
+      confirmDone(msg, { sound: !r.requested });
+    } else if (act === 'newdoc') {
+      await api('POST', `/api/drafts/${id}/lanes/team/new-document`, { template: btn.dataset.template });
+      state.newDoc = null;
+      confirmDone('New document started');
+      await refresh();
+      if (state.lane) renderDoc({ force: true });
+      return;
     } else if (act === 'req-approve') {
       await api('POST', `/api/drafts/${id}/requests/${btn.dataset.req}`, { decision: 'approve' });
       state.preview = null;
       state.view = 'text';
       ledger('The team draft was uploaded to the clean draft.');
-      confirmDone('Uploaded to the clean draft');
+      confirmDone('Uploaded to the clean draft', { sound: true });
     } else if (act === 'approve') {
       await api('PATCH', `/api/drafts/${id}`, { status: 'approved' });
       ledger('You approved the clean draft.');
@@ -967,4 +1018,24 @@ page.addEventListener('drop', (e) => {
   page.classList.remove('drop-over');
   const file = e.dataTransfer.files[0];
   if (file && state.lane) importInto(state.lane, file);
+});
+
+// ---------- the matter's date (set by the legal team from the header) ----------
+$('#matterDate').addEventListener('change', async (e) => {
+  if (!state.cur || state.me.role !== 'team') return;
+  try {
+    await api('PATCH', `/api/drafts/${state.cur.draft.id}`, { matterDate: e.target.value });
+    state.cur.draft.matter_date = e.target.value || null;
+    const d = state.drafts.find((x) => x.id === state.cur.draft.id);
+    if (d) d.matter_date = state.cur.draft.matter_date;
+    renderDesk();
+    renderMatters();
+    ledger(e.target.value ? `Matter date set to ${fmtMatterDate(e.target.value)}.` : 'Matter date cleared.');
+  } catch (err) { ledger(err.message); }
+});
+// clicking anywhere on the date opens the date picker
+$('.mdate').addEventListener('click', (e) => {
+  const input = $('#matterDate');
+  if (input.disabled || e.target === input) return;
+  try { input.showPicker(); } catch { input.focus(); }
 });
