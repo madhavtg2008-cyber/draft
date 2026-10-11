@@ -130,6 +130,17 @@ db.exec(`
 `);
 
 try { db.exec('ALTER TABLE drafts ADD COLUMN matter_date TEXT'); } catch { /* already there */ }
+// newer columns, added to existing databases
+for (const sql of [
+  'ALTER TABLE share_links ADD COLUMN name TEXT',                          // the client name the link expects
+  'ALTER TABLE share_links ADD COLUMN attempts INTEGER DEFAULT 0',         // wrong-name tries
+  'ALTER TABLE users ADD COLUMN perm_upload INTEGER NOT NULL DEFAULT 0',   // associate may upload to the clean draft
+  'ALTER TABLE users ADD COLUMN perm_confirm INTEGER NOT NULL DEFAULT 0',  // associate may confirm/reject changes
+  'ALTER TABLE users ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0',      // removed from the team
+]) { try { db.exec(sql); } catch { /* already there */ } }
+// what a person may do: the Team Head can do everything; associates as the Team Head allows
+const canUploadClean = (u) => !!u?.head || (u?.role === 'team' && !!u.perm_upload);
+const canConfirm = (u) => !!u?.head || (u?.role === 'team' && !!u.perm_confirm);
 
 // ---------- helpers ----------
 const now = () => Date.now();
@@ -142,7 +153,8 @@ function verifyPassword(pw, stored) {
   const [salt, hash] = stored.split(':');
   return crypto.timingSafeEqual(crypto.scryptSync(pw, salt, 64), Buffer.from(hash, 'hex'));
 }
-const publicUser = (u) => u && ({ id: u.id, name: u.name, email: u.email, role: u.role, title: u.title, color: u.color, head: !!u.head });
+const publicUser = (u) => u && ({ id: u.id, name: u.name, email: u.email, role: u.role, title: u.title, color: u.color, head: !!u.head,
+  canUpload: canUploadClean(u), canConfirm: canConfirm(u) });
 const getUser = (id) => db.prepare('SELECT * FROM users WHERE id = ?').get(id);
 
 function nextColor() {
@@ -378,7 +390,7 @@ function recordVersion(draftId, lane, content, authorId, note, forceNew) {
 function saveLane(draftId, lane, html, user, note, forceNew = false) {
   const content = clean(html);
   const { stream } = getState(draftId, lane);
-  putState(draftId, lane, applyEdit(stream, content, user.id, !!user.head));
+  putState(draftId, lane, applyEdit(stream, content, user.id, canConfirm(user))); // confirmers' edits need no confirming
   return recordVersion(draftId, lane, content, user.id, note, forceNew);
 }
 
@@ -564,9 +576,10 @@ function userFromToken(token) {
     const expected = sign(`${uid}.${exp}`);
     if (!sig || sig.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
     if (Number(exp) < Date.now()) return null;
-    return getUser(Number(uid)) || null;
+    const u = getUser(Number(uid));
+    return u && !u.disabled ? u : null;
   }
-  return db.prepare('SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ?').get(token) || null;
+  return db.prepare('SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ? AND u.disabled = 0').get(token) || null;
 }
 function auth(req, res, next) {
   const row = userFromToken(parseCookies(req).lex_session);
@@ -575,7 +588,8 @@ function auth(req, res, next) {
   next();
 }
 const teamOnly = (req, res, next) => (req.user.role === 'team' ? next() : res.status(403).json({ error: 'Legal team only' }));
-const headOnly = (req, res, next) => (req.user.head ? next() : res.status(403).json({ error: 'Only the Team Head can confirm changes' }));
+const headOnly = (req, res, next) => (req.user.head ? next() : res.status(403).json({ error: 'Only the Team Head can do this' }));
+const confirmerOnly = (req, res, next) => (canConfirm(req.user) ? next() : res.status(403).json({ error: 'Only the Team Head (or an associate they allow) can confirm changes' }));
 function loadDraft(req, res, next) {
   const draft = db.prepare('SELECT * FROM drafts WHERE id = ?').get(Number(req.params.id));
   if (!canSeeDraft(req.user, draft)) return res.status(404).json({ error: 'Draft not found' });
@@ -604,6 +618,7 @@ function startSession(res, userId) {
 app.post('/api/auth/login', (req, res) => {
   const { email, password } = req.body || {};
   const user = db.prepare('SELECT * FROM users WHERE email = ?').get(String(email || '').toLowerCase().trim());
+  if (user?.disabled) return res.status(401).json({ error: 'This account has been removed from the firm' });
   if (user && !user.pass_hash) return res.status(401).json({ error: 'Your lawyer has set up this account — choose your password under "Set up account" to activate it' });
   if (!user || !verifyPassword(String(password || ''), user.pass_hash)) return res.status(401).json({ error: 'Invalid email or password' });
   startSession(res, user.id);
@@ -807,7 +822,7 @@ app.put('/api/drafts/:id/lanes/:lane', auth, loadDraft, laneParam, (req, res) =>
 });
 
 // Team Head confirms or rejects pending changes: one hunk, or all of them
-app.post('/api/drafts/:id/lanes/:lane/changes', auth, headOnly, loadDraft, laneParam, (req, res) => {
+app.post('/api/drafts/:id/lanes/:lane/changes', auth, confirmerOnly, loadDraft, laneParam, (req, res) => {
   const { lane } = req.params;
   const { action, hunk, rev } = req.body || {};
   if (!['accept', 'reject'].includes(action)) return res.status(400).json({ error: 'action must be accept or reject' });
@@ -864,7 +879,7 @@ function uploadToClean(draftId, content, head, note, origin) {
 // as a request (approved later by the Head) for anyone else on the team.
 app.post('/api/drafts/:id/promote', auth, teamOnly, loadDraft, (req, res) => {
   const content = stripTeamNotes(latest(req.draft.id, 'team').content);
-  if (!req.user.head) {
+  if (!canUploadClean(req.user)) {
     upsertRequest(req.draft.id, 'promote-team', content, req.user.id);
     logActivity(req.draft.id, 'team', `asked to ${REQUEST_WORDS['promote-team']}`, req.user.id);
     broadcast(req.draft.id, 'draft', { by: req.user.name, kind: 'request' });
@@ -883,7 +898,7 @@ app.post('/api/drafts/:id/requests/:rid', auth, teamOnly, loadDraft, (req, res) 
   if (decision === 'withdraw') {
     if (r.requested_by !== req.user.id && !req.user.head) return res.status(403).json({ error: 'Not your request' });
   } else {
-    if (!req.user.head) return res.status(403).json({ error: 'Only the Team Head can approve requests' });
+    if (!canUploadClean(req.user)) return res.status(403).json({ error: 'Only the Team Head (or an associate they allow) can approve uploads' });
     if (!['approve', 'decline'].includes(decision)) return res.status(400).json({ error: 'decision must be approve, decline or withdraw' });
   }
   const status = { approve: 'approved', decline: 'declined', withdraw: 'withdrawn' }[decision];
@@ -903,7 +918,7 @@ app.get('/api/drafts/:id/history/:lane', auth, loadDraft, laneParam, (req, res) 
 
 app.post('/api/drafts/:id/history/:lane/:versionId/restore', auth, loadDraft, laneParam, (req, res) => {
   const { lane } = req.params;
-  if (!canEditLane(req.user, req.draft, lane) && !(lane === 'final' && req.user.head)) return res.status(403).json({ error: 'Not permitted' });
+  if (!canEditLane(req.user, req.draft, lane) && !(lane === 'final' && canUploadClean(req.user))) return res.status(403).json({ error: 'Not permitted' });
   const old = db.prepare('SELECT * FROM versions WHERE id = ? AND draft_id = ? AND lane = ?').get(Number(req.params.versionId), req.draft.id, lane);
   if (!old) return res.status(404).json({ error: 'Version not found' });
   saveLane(req.draft.id, lane, old.content, req.user, `Restored version #${old.id}`, true);
@@ -1070,10 +1085,12 @@ app.post('/api/drafts/:id/lanes/:lane/new-document', auth, teamOnly, loadDraft, 
 const LINK_DAYS = 30;
 const hashToken = (t) => crypto.createHash('sha256').update(String(t)).digest('hex');
 const originOf = (req) => process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`;
-function makeShareLink(draftId, email, byId, origin) {
+// `name` = the client's full name as the lawyer gave it; the link only opens for someone who types it
+function makeShareLink(draftId, email, byId, origin, name) {
   const token = crypto.randomBytes(24).toString('base64url');
-  db.prepare('INSERT INTO share_links (token_hash, draft_id, email, created_by, created_at, expires_at) VALUES (?,?,?,?,?,?)')
-    .run(hashToken(token), draftId, String(email).toLowerCase(), byId ?? null, now(), now() + LINK_DAYS * 86400000);
+  const expected = name || userByEmail(email)?.name || null;
+  db.prepare('INSERT INTO share_links (token_hash, draft_id, email, name, created_by, created_at, expires_at) VALUES (?,?,?,?,?,?,?)')
+    .run(hashToken(token), draftId, String(email).toLowerCase(), expected, byId ?? null, now(), now() + LINK_DAYS * 86400000);
   return `${origin || process.env.PUBLIC_URL || `http://localhost:${PORT}`}/join/${token}`;
 }
 const linkRow = (token) => db.prepare('SELECT * FROM share_links WHERE token_hash = ? AND expires_at > ?').get(hashToken(token), now());
@@ -1106,12 +1123,16 @@ app.post('/api/drafts/:id/share', auth, teamOnly, loadDraft, async (req, res) =>
   const name = String(req.body?.name || '').trim().slice(0, 80);
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return res.status(400).json({ error: 'Enter a valid email address' });
   const d = req.draft;
-  const user = ensureClient(email, name);
+  const known = userByEmail(email);
+  // a client's link only opens for the person who types this name — so the lawyer must give it
+  const expected = name || (known?.role === 'client' ? known.name : '');
+  if (known?.role !== 'team' && !expected) return res.status(400).json({ error: "Enter the client's full name — they'll need to type it to get in" });
+  const user = ensureClient(email, expected);
   grantAccess(d.id, email, req.user.id);
   if (!d.client_id && user.role === 'client') db.prepare('UPDATE drafts SET client_id = ? WHERE id = ?').run(user.id, d.id);
   logActivity(d.id, null, `shared the matter with ${email}`, req.user.id);
   if (user.role === 'team') return res.json({ team: true, emailed: false }); // colleagues simply sign in
-  const link = makeShareLink(d.id, email, req.user.id, originOf(req));
+  const link = makeShareLink(d.id, email, req.user.id, originOf(req), expected);
   if (req.body?.notify === false) { // "Copy link": share without sending an email
     broadcast(d.id, 'draft', { by: req.user.name, kind: 'share' });
     return res.json({ link, emailed: false, copied: true });
@@ -1146,23 +1167,59 @@ app.get('/api/join/:token', (req, res) => {
   if (!row) return res.status(404).json({ error: 'This link has expired or is no longer valid. Ask your lawyer for a new one.' });
   const d = db.prepare('SELECT * FROM drafts WHERE id = ?').get(row.draft_id);
   const by = row.created_by ? getUser(row.created_by) : null;
-  res.json({ matter: { title: d.title, matter_no: d.matter_no }, email: row.email, name: userByEmail(row.email)?.name || '', invitedBy: by?.name || null });
+  // (the expected name is never sent to the browser — the person has to know it)
+  res.json({ matter: { title: d.title, matter_no: d.matter_no }, email: row.email, invitedBy: by?.name || null });
 });
+// "Aarav  Mehta", "aarav mehta", "Aarav Mehta." all count as the same name
+const sameName = (a, b) => {
+  const norm = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  return norm(a) !== '' && norm(a) === norm(b);
+};
+const MAX_NAME_TRIES = 5;
 app.post('/api/join/:token', (req, res) => {
   const row = linkRow(req.params.token);
   if (!row) return res.status(404).json({ error: 'This link has expired or is no longer valid. Ask your lawyer for a new one.' });
+  if ((row.attempts || 0) >= MAX_NAME_TRIES) return res.status(429).json({ error: 'Too many attempts with this link. Ask your lawyer for a new one.' });
   const name = String(req.body?.name || '').trim().slice(0, 80);
   if (!name) return res.status(400).json({ error: 'Please enter your name' });
-  let user = ensureClient(row.email, name);
-  if (user.role === 'client' && user.name !== name) { db.prepare('UPDATE users SET name = ? WHERE id = ?').run(name, user.id); user = getUser(user.id); }
+  // only the person the lawyer named may come in
+  const expected = row.name || userByEmail(row.email)?.name;
+  if (expected && !sameName(name, expected)) {
+    db.prepare('UPDATE share_links SET attempts = COALESCE(attempts, 0) + 1 WHERE token_hash = ?').run(row.token_hash);
+    const left = MAX_NAME_TRIES - (row.attempts || 0) - 1;
+    return res.status(403).json({ error: left > 0
+      ? `That name doesn't match this invitation. Type your full name as your lawyer has it (${left} ${left === 1 ? 'try' : 'tries'} left).`
+      : 'That name doesn\'t match this invitation, and the link is now locked. Ask your lawyer for a new one.' });
+  }
+  const user = ensureClient(row.email, expected || name);
   grantAccess(row.draft_id, row.email, row.created_by);
   startSession(res, user.id);
   res.json({ user: publicUser(user), draftId: row.draft_id });
 });
 
 // ---------- the legal team: the Team Head invites lawyers ----------
-app.get('/api/team', auth, headOnly, (req, res) => {
-  res.json({ team: db.prepare("SELECT id, name, email, title, head, pass_hash != '' AS active FROM users WHERE role = 'team' ORDER BY head DESC, name").all() });
+app.get('/api/team', auth, teamOnly, (req, res) => {
+  res.json({ team: db.prepare("SELECT id, name, email, title, color, head, perm_upload, perm_confirm, pass_hash != '' AS active FROM users WHERE role = 'team' AND disabled = 0 ORDER BY head DESC, name").all() });
+});
+// the Team Head sets what an associate may do
+app.patch('/api/team/:uid', auth, headOnly, (req, res) => {
+  const u = getUser(Number(req.params.uid));
+  if (!u || u.role !== 'team' || u.disabled) return res.status(404).json({ error: 'Team member not found' });
+  if (u.head) return res.status(400).json({ error: 'The Team Head can already do everything' });
+  const b = req.body || {};
+  if ('perm_upload' in b) db.prepare('UPDATE users SET perm_upload = ? WHERE id = ?').run(b.perm_upload ? 1 : 0, u.id);
+  if ('perm_confirm' in b) db.prepare('UPDATE users SET perm_confirm = ? WHERE id = ?').run(b.perm_confirm ? 1 : 0, u.id);
+  res.json({ ok: true });
+});
+// the Team Head removes someone from the team: they can no longer sign in (their past work stays in the history)
+app.delete('/api/team/:uid', auth, headOnly, (req, res) => {
+  const u = getUser(Number(req.params.uid));
+  if (!u || u.role !== 'team' || u.disabled) return res.status(404).json({ error: 'Team member not found' });
+  if (u.head || u.id === req.user.id) return res.status(400).json({ error: "The Team Head can't be removed" });
+  db.prepare('UPDATE users SET disabled = 1, perm_upload = 0, perm_confirm = 0 WHERE id = ?').run(u.id);
+  db.prepare('DELETE FROM sessions WHERE user_id = ?').run(u.id);
+  db.prepare('DELETE FROM matter_access WHERE email = ?').run(u.email);
+  res.json({ ok: true });
 });
 app.post('/api/team', auth, headOnly, (req, res) => {
   const name = String(req.body?.name || '').trim().slice(0, 80);

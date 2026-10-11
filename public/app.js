@@ -65,6 +65,9 @@ const lsGet = (k) => { try { return localStorage.getItem(k); } catch { return nu
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
 const person = (id) => state.cur?.people.find((p) => p.id === id) || { id, name: 'Someone', color: '#777' };
 const isHead = () => !!state.me?.head;
+// what this person may do (the Team Head can do everything; associates as the Team Head allows)
+const canConfirmMe = () => !!state.me?.canConfirm;
+const canUploadMe = () => !!state.me?.canUpload;
 // card ⇄ full-screen morph; an interrupted animation must never break navigation
 function transition(fn) {
   if (!document.startViewTransition || document.hidden) { fn(); return null; }
@@ -315,6 +318,7 @@ function refreshSoon() {
 }
 async function refresh() {
   if (!state.cur) return;
+  try { state.me = (await api('GET', '/api/me')).user; } catch { /* signed out elsewhere */ }
   try { state.cur = await api('GET', `/api/drafts/${state.cur.draft.id}`); }
   catch { return; }
   renderDesk();
@@ -346,7 +350,7 @@ function renderDesk() {
     badge.classList.toggle('on', n > 0);
     if (n > 0) {
       const authors = [...new Set([...info.segments.filter((s) => s.by).map((s) => s.by), ...reqs.map((r) => r.requested_by)])];
-      badge.innerHTML = authors.map((id) => `<span class="dot" style="--c:${person(id).color}"></span>`).join('') + `${n} ${isHead() ? 'to confirm' : 'pending'}`;
+      badge.innerHTML = authors.map((id) => `<span class="dot" style="--c:${person(id).color}"></span>`).join('') + `${n} ${canConfirmMe() ? 'to confirm' : 'pending'}`;
     }
   }
 }
@@ -443,7 +447,7 @@ function renderDoc({ force = false, fromServer = false } = {}) {
   }
   ed.contentEditable = info.editable ? 'true' : 'false';
   $('#tabChanges').textContent = info.pending || '';
-  $('#tabChanges').classList.toggle('alert', info.pending > 0 && isHead());
+  $('#tabChanges').classList.toggle('alert', info.pending > 0 && canConfirmMe());
   const clean = lane === 'final';
   $('#page').classList.toggle('no-margin', clean);
   $('#docTabs [data-view="changes"]').classList.toggle('hidden', clean);
@@ -471,14 +475,14 @@ function renderActions() {
   const hold = (act, label, sub = '') => `<button class="hold" data-act="${act}">${label}${sub ? ` <small>${sub}</small>` : ''}</button>`;
   let html = '';
   if (info.pending && state.view !== 'changes') {
-    html += `<span class="note">${info.pending} change${info.pending > 1 ? 's' : ''} ${isHead() ? 'awaiting your confirmation' : `awaiting confirmation by ${esc(state.cur.head?.name || 'the Team Head')}`} — <button data-goto="changes">review</button></span>`;
+    html += `<span class="note">${info.pending} change${info.pending > 1 ? 's' : ''} ${canConfirmMe() ? 'awaiting your confirmation' : `awaiting confirmation by ${esc(state.cur.head?.name || 'the Team Head')}`} — <button data-goto="changes">review</button></span>`;
   }
   // The clean draft is only ever uploaded from the team draft, by the Team Head.
   // That single control lives on the team draft; the clean draft itself stays bare.
   if (team && lane === 'team') {
     const headName = esc(state.cur.head?.name || 'the Team Head');
     const reqs = state.cur.requests || [];
-    if (isHead()) {
+    if (canUploadMe()) {
       const r = reqs[0];
       html += r
         ? `<span class="req"><i class="dot" style="--c:${r.requester_color}"></i><b>${esc(r.requester)}</b> asked you to upload · ${ago(r.created_at)}
@@ -569,18 +573,18 @@ function renderChanges() {
     }).join('');
     if (hunkEnds.get(s.h) === i) {
       let mark = hunkHasText.has(s.h) ? '' : `<span class="fmt" data-h="${s.h}" style="--c:${p.color}" title="Formatting change by ${esc(p.name)}">Format</span>`;
-      if (isHead()) mark += `<span class="ctl" data-h="${s.h}"><button data-a="accept" title="Confirm">✓</button><button data-a="reject" title="Reject">✕</button></span>`;
+      if (canConfirmMe()) mark += `<span class="ctl" data-h="${s.h}"><button data-a="accept" title="Confirm">✓</button><button data-a="reject" title="Reject">✕</button></span>`;
       out = out.replace(/((?:<[^>]*>)*)$/, `${mark}$1`); // keep the controls inside the paragraph
     }
     return out;
   }).join('');
   const summary = info.pending
-    ? `<b>${info.pending}</b> change${info.pending > 1 ? 's' : ''} ${isHead() ? 'awaiting your confirmation' : `awaiting confirmation by ${esc(head?.name || 'the Team Head')}`}`
+    ? `<b>${info.pending}</b> change${info.pending > 1 ? 's' : ''} ${canConfirmMe() ? 'awaiting your confirmation' : `awaiting confirmation by ${esc(head?.name || 'the Team Head')}`}`
     : 'Everything on this sheet is confirmed.';
   pane.innerHTML = `
     <div class="changes-head">
       <span class="summary">${summary}</span>
-      ${isHead() && info.pending ? '<button class="hold" data-act="accept-all">Hold to confirm all</button><button class="hold" data-act="reject-all">Hold to reject all</button>' : ''}
+      ${canConfirmMe() && info.pending ? '<button class="hold" data-act="accept-all">Hold to confirm all</button><button class="hold" data-act="reject-all">Hold to reject all</button>' : ''}
       ${authors.length ? `<div class="legend">${authors.map((id) => `<span><i class="dot" style="--c:${person(id).color}"></i>${esc(person(id).name)}</span>`).join('')}</div>` : ''}
     </div>
     <div class="doc-text rich">${body || '<span class="none">Empty.</span>'}</div>`;
@@ -761,7 +765,7 @@ async function renderHistory() {
   const { versions } = await api('GET', `/api/drafts/${state.cur.draft.id}/history/${lane}`);
   if (state.lane !== lane) return;
   const current = htmlToText(docHtml());
-  const canRestore = state.cur.lanes[lane]?.editable || (lane === 'final' && isHead());
+  const canRestore = state.cur.lanes[lane]?.editable || (lane === 'final' && canUploadMe());
   pane.innerHTML = versions.map((v, i) => `
     <div class="version">
       <button type="button"><i class="dot" style="--c:${v.author_color || '#777'}"></i><span class="v-main"><span class="v-note">${esc(v.note || 'Edit')}${i === 0 ? ' · current' : ''}</span><span class="v-by">${esc(v.author || '—')} · ${words(v.content)} words</span></span><span class="v-when">${ago(v.updated_at)}</span></button>
@@ -926,7 +930,7 @@ function openStream(draftId) {
   on('presence', (d) => { state.cur.presence = d.users; renderPresence(d.users); });
   on('draft', (d) => {
     if (d.by !== state.me.name) {
-      const msg = { request: isHead() ? `${d.by} sent a request for your approval.` : `${d.by} sent a request to the Team Head.`,
+      const msg = { request: canUploadMe() ? `${d.by} sent a request for your approval.` : `${d.by} sent a request to the Team Head.`,
         approved: `${d.by} approved a request.`, declined: `${d.by} declined a request.`, withdrawn: `${d.by} withdrew a request.` }[d.kind];
       ledger(msg || `${d.by} updated the matter.`);
     }
@@ -976,7 +980,7 @@ async function importInto(lane, file) {
     if (page) state.cur.draft.page = page; // Word's page size & margins
     state.cur.lanes[lane] = r.lane;
     renderDesk();
-    ledger(`${file.name} loaded into the ${LANE[lane].lower}${isHead() ? '' : ` — awaiting ${state.cur.head?.name || 'the Team Head'}'s confirmation`}. Edit away.`);
+    ledger(`${file.name} loaded into the ${LANE[lane].lower}${canConfirmMe() ? '' : ` — awaiting ${state.cur.head?.name || 'the Team Head'}'s confirmation`}. Edit away.`);
     if (state.lane === lane) { state.dirty = false; renderDoc({ force: true }); }
     else { history.pushState(null, '', `#${lane}`); openDoc(lane); } // straight into the document to edit it
   } catch (err) { ledger(err.message); }

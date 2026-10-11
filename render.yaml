@@ -32,8 +32,12 @@ services:
         sync: false
       - key: SESSION_SECRET
         generateValue: true
-      # Optional — real email sending (otherwise emails are saved in /var/data/outbox):
-      - key: SMTP_HOST
+      # Email (invites, clean-draft updates, new lawyers). Without these, emails are saved in /var/data/outbox.
+      - key: MAIL_FROM       # e.g. Tabellio <noreply@yourfirm.com>
+        sync: false
+      - key: SMTP_HOST       # e.g. smtp-relay.brevo.com
+        sync: false
+      - key: SMTP_PORT       # usually 587
         sync: false
       - key: SMTP_USER
         sync: false

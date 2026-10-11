@@ -92,7 +92,7 @@
       <h1 class="auth-line join-title" id="joinTitle"></h1>
       <p class="join-sub" id="joinSub"></p>
       <form id="joinForm" class="auth-form">
-        <input name="name" required maxlength="80" placeholder="Your full name" autocomplete="name" />
+        <input name="name" required maxlength="80" placeholder="Your full name, as your lawyer has it" autocomplete="name" />
         <button class="btn-primary" type="submit">Open the matter</button>
       </form>
       <div id="joinError" class="auth-error"></div>
@@ -138,6 +138,10 @@
           <div class="row"><button type="button" id="docCancel" class="link">Cancel</button><button class="btn-primary sm" type="submit">Create</button></div>
         </form>
       </div>
+      <button id="teamBtn" class="rail-team team-only" title="Your legal team">
+        <svg viewBox="0 0 16 16"><circle cx="6" cy="5.5" r="2.3"/><path d="M1.8 13.5c.5-2.4 2.2-3.7 4.2-3.7s3.7 1.3 4.2 3.7"/><circle cx="11.5" cy="6" r="1.8"/><path d="M11 9.9c1.7 0 3 1 3.4 3.1"/></svg>
+        Team <em id="teamCount"></em>
+      </button>
       <div class="rail-foot">
         <div class="me"><div id="meAvatar" class="avatar"></div><div><b id="meName"></b><small id="meRole"></small></div></div>
         <button id="logoutBtn" class="link">Sign out</button>
@@ -197,15 +201,6 @@
                     <button class="theme-opt" data-theme="white" style="--a:#f3f2ee;--b:#141414"><i></i>White</button>
                     <button class="theme-opt" data-theme="navy" style="--a:#0d1729;--b:#f4efe2"><i></i>Navy</button>
                   </div>
-                  <div id="pmTeam" class="pm-team hidden">
-                    <div class="pm-label">Add a lawyer</div>
-                    <form id="teamForm" class="pm-form">
-                      <input name="name" required placeholder="Their name" />
-                      <input name="email" type="email" required placeholder="Their email" />
-                      <button class="btn-primary sm" type="submit">Add to team</button>
-                    </form>
-                    <div id="teamMsg" class="pm-msg"></div>
-                  </div>
                   <button id="pmOut" class="pm-out">Sign out</button>
                 </div>
               </div>
@@ -213,10 +208,10 @@
                 <button id="shareBtn" class="share-btn">Share matter</button>
                 <div id="sharePanel" class="share-panel hidden">
                   <div class="sp-title">Share this matter</div>
-                  <p class="sp-note">Only the people listed here can see it. Clients get a private link and come in by entering their name.</p>
+                  <p class="sp-note">Only the people listed here can see it. Clients get a private link and can only get in by typing the full name you enter here.</p>
                   <form id="shareForm" class="sp-form">
                     <input name="email" type="email" required placeholder="Client's email" />
-                    <input name="name" placeholder="Their name (optional)" />
+                    <input name="name" required placeholder="Client's full name — they must type it to get in" />
                     <button class="btn-primary sm" type="submit" title="Give access and email them a private link">Share &amp; email</button>
                     <button class="sp-copy" type="button" id="shareCopy" title="Give access and copy their private link, without emailing">Copy link</button>
                   </form>
@@ -388,6 +383,22 @@
     </div>
   </section>
 
+  <!-- the legal team: who's on it, permissions, add by email -->
+  <aside id="teamPanel" class="team-panel hidden" aria-label="Team">
+    <header class="tp-head">
+      <div><div class="tp-kicker">Your firm</div><h2>Team</h2></div>
+      <button id="tpClose" class="tp-close" title="Close (Esc)">✕</button>
+    </header>
+    <form id="tpAdd" class="tp-add hidden">
+      <div class="tp-label">Add a lawyer</div>
+      <input name="name" required placeholder="Full name" />
+      <input name="email" type="email" required placeholder="Email" />
+      <button class="btn-primary sm" type="submit">Add to team</button>
+      <p id="tpMsg" class="tp-msg"></p>
+    </form>
+    <div id="tpList" class="tp-list"></div>
+  </aside>
+
   <!-- brief confirmation after important actions -->
   <div id="confirm" class="confirm" aria-live="polite"><span class="tick">✓</span><b id="confirmText"></b></div>
 
@@ -395,5 +406,6 @@
   <script src="/editor.js"></script>
   <script src="/pages.js"></script>
   <script src="/share.js"></script>
+  <script src="/team.js"></script>
 </body>
 </html>

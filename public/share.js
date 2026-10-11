@@ -13,7 +13,7 @@ async function showJoin(token) {
     $('#joinBy').textContent = info.invitedBy ? `${info.invitedBy} has invited you to` : "You've been invited to";
     $('#joinTitle').textContent = info.matter.title;
     $('#joinSub').textContent = `${info.matter.matter_no}  ·  for ${info.email}`;
-    $('#joinForm').elements.name.value = info.name || '';
+    $('#joinForm').elements.name.value = ''; // they must know their own name — nothing is pre-filled
     $('#joinForm').elements.name.focus();
   } catch (err) {
     $('#joinTitle').textContent = 'Link not valid';
@@ -220,7 +220,6 @@ function fillProfile() {
   $('#profileBtn').style.setProperty('--c', me.color);
   $('#pmName').textContent = me.name;
   $('#pmSub').textContent = `${me.email} · ${me.role === 'team' ? (me.title || 'Legal team') : 'Client'}`;
-  $('#pmTeam').classList.toggle('hidden', !me.head); // only the Team Head adds lawyers
 }
 new MutationObserver(fillProfile).observe($('#app'), { attributes: true, attributeFilter: ['class'] });
 $('#profileBtn').addEventListener('click', (e) => {
@@ -353,13 +352,3 @@ $('#epYes').addEventListener('click', async () => {
   } catch (err) { $('#epError').textContent = err.message; }
 });
 
-// ---------- the Team Head adds a lawyer to the firm ----------
-$('#teamForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const f = e.target.elements;
-  try {
-    await api('POST', '/api/team', { name: f.name.value, email: f.email.value });
-    $('#teamMsg').textContent = `Added. ${f.name.value} sets their password with "Set up account" on the sign-in page, using ${f.email.value}.`;
-    e.target.reset();
-  } catch (err) { $('#teamMsg').textContent = err.message; }
-});
