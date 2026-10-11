@@ -451,7 +451,8 @@ function laneInfo(user, draft, lane) {
 // Demo accounts & sample matters exist only for local testing. On a live server (NODE_ENV=production,
 // or DEMO=false) none are created: the Team Head comes from the HEAD_EMAIL / HEAD_PASSWORD / HEAD_NAME settings.
 const LIVE = process.env.NODE_ENV === 'production' || !!process.env.RENDER;
-const DEMO = process.env.DEMO ? process.env.DEMO === 'true' : !LIVE;
+// On Vercel the database lives in /tmp and resets, so it runs as a demo with sample accounts unless DEMO=false.
+const DEMO = process.env.DEMO ? process.env.DEMO === 'true' : (!!process.env.VERCEL || !LIVE);
 if (!DEMO && db.prepare('SELECT COUNT(*) AS n FROM users').get().n === 0) {
   const email = String(process.env.HEAD_EMAIL || '').toLowerCase().trim();
   const pw = String(process.env.HEAD_PASSWORD || '');
@@ -566,7 +567,8 @@ function parseCookies(req) {
 }
 // Sessions. With SESSION_SECRET set (do this on any serverless host), the cookie itself is signed,
 // so every server instance can verify it. Without it, sessions live in the database.
-const SESSION_SECRET = process.env.SESSION_SECRET && process.env.SESSION_SECRET.length >= 16 ? process.env.SESSION_SECRET : null;
+const SESSION_SECRET = process.env.SESSION_SECRET && process.env.SESSION_SECRET.length >= 16 ? process.env.SESSION_SECRET
+  : process.env.VERCEL ? 'tabellio-vercel-demo-only-secret' : null; // Vercel demo: cookies must survive across instances
 const SESSION_DAYS = 14;
 const sign = (data) => crypto.createHmac('sha256', SESSION_SECRET).update(data).digest('base64url');
 function userFromToken(token) {

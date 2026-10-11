@@ -7,3 +7,6 @@ lexdraft.db-shm
 Thumbs.db
 .claude/
 outbox/
+
+.vercel
+.env*
