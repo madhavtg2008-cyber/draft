@@ -1039,3 +1039,8 @@ $('.mdate').addEventListener('click', (e) => {
   if (input.disabled || e.target === input) return;
   try { input.showPicker(); } catch { input.focus(); }
 });
+
+// Esc backs out of the "Delete this matter?" question, wherever the focus is
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && state.confirmDel) { e.preventDefault(); state.confirmDel = null; renderMatters(); }
+});
