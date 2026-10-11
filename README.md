@@ -1,4 +1,4 @@
-# LexDraft
+# Tabellio
 
 A drafting workspace for law firms. Every matter has three sheets:
 
@@ -43,7 +43,7 @@ The database (`lexdraft.db`) is created and filled with demo data on first start
 
 ## Going live (Render + your own domain)
 
-LexDraft runs as one Node server with its data on a disk, so host it somewhere that keeps a disk:
+Tabellio runs as one Node server with its data on a disk, so host it somewhere that keeps a disk:
 **Render** works out of the box using `render.yaml`.
 
 1. On render.com, choose **New → Blueprint** and pick this GitHub repo.

@@ -1,4 +1,4 @@
-// ================= LexDraft — sharing, joining by link, Google/Apple sign-in, templates =================
+// ================= Tabellio — sharing, joining by link, Google/Apple sign-in, templates =================
 // Loaded after app.js, editor.js and pages.js; shares their globals.
 
 // ---------- joining a matter from a shared link: just a name, no password ----------

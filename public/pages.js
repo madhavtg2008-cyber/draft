@@ -1,4 +1,4 @@
-// ================= LexDraft — real pages, zoom, confirmations =================
+// ================= Tabellio — real pages, zoom, confirmations =================
 // Loaded after app.js and editor.js; shares their globals.
 //
 // The document is laid out on sheets of the matter's own page size and margins (taken from

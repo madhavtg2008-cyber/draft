@@ -1,4 +1,4 @@
-// LexDraft — three-lane legal drafting server
+// Tabellio — three-lane legal drafting server
 // Lanes: "client" (client-editable), "final" (clean draft, team-controlled), "team" (privileged, team-only)
 // Every edit is attributed to its author. Edits by anyone other than the Team Head stay pending
 // until the Team Head confirms (or rejects) them.
@@ -847,7 +847,7 @@ function notifyCleanDraft(draftId, head, origin) {
       heading: 'Your clean draft has been updated',
       lines: [`Dear ${c.name || 'client'},`, `${head.name} has updated the clean draft of "${d.title}" (${d.matter_no}).`, 'Use the button below to read it. The link is personal to you.'],
       button: 'Open the clean draft', url: link,
-      footer: 'Sent by LexDraft. If you were not expecting this email, you can ignore it.',
+      footer: 'Sent by Tabellio. If you were not expecting this email, you can ignore it.',
     });
   }
 }
@@ -954,7 +954,7 @@ app.get('/api/drafts/:id/lanes/:lane/docx', auth, loadDraft, laneParam, async (r
   const footer = `<p style="text-align: center; font-size: 8pt; color: #555555">Exported ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</p>`;
   try {
     const buf = await HTMLtoDOCX(`<!DOCTYPE html><html><body>${html}</body></html>`, header, {
-      title: `${d.title} — ${LANE_TITLES[lane]}`, creator: 'LexDraft', font: 'Garamond', fontSize: 24,
+      title: `${d.title} — ${LANE_TITLES[lane]}`, creator: 'Tabellio', font: 'Garamond', fontSize: 24,
       header: true, footer: true, pageNumber: true,
       orientation: pageOf(d).w > pageOf(d).h ? 'landscape' : 'portrait',
       pageSize: { width: pageOf(d).w, height: pageOf(d).h },
@@ -1027,7 +1027,7 @@ app.get('/api/drafts/:id/lanes/:lane/pdf', auth, loadDraft, laneParam, (req, res
     fitImages(content, (pg.w - pg.left - pg.right) / 20, (pg.h - pg.top - pg.bottom) / 20);
     mapFonts(content);
     const doc = pdfPrinter.createPdfKitDocument({
-      info: { title: `${d.title} — ${LANE_TITLES[lane]}`, author: 'LexDraft', creator: 'LexDraft' },
+      info: { title: `${d.title} — ${LANE_TITLES[lane]}`, author: 'Tabellio', creator: 'Tabellio' },
       pageSize: { width: pg.w / 20, height: pg.h / 20 }, pageMargins: [pg.left / 20, pg.top / 20, pg.right / 20, pg.bottom / 20],
       defaultStyle: { font: 'Garamond', fontSize: 12, lineHeight: 1.25 },
       header: () => ({ text: `${d.matter_no}  ·  ${LANE_TITLES[lane].toUpperCase()}`, alignment: 'right', fontSize: 8, color: '#555555', margin: [pg.left / 20, Math.min(34, pg.top / 40), pg.right / 20, 0] }),
@@ -1045,7 +1045,7 @@ app.get('/api/drafts/:id/lanes/:lane/pdf', auth, loadDraft, laneParam, (req, res
   }
 });
 
-// ---------- templates: new documents made inside LexDraft ----------
+// ---------- templates: new documents made inside Tabellio ----------
 function templateHtml(id, ctx) {
   const html = clean(textToHtml(renderTemplate(id, ctx)));
   return id === 'blank' ? `${html}<p><br /></p>` : html;
@@ -1120,7 +1120,7 @@ app.post('/api/drafts/:id/share', auth, teamOnly, loadDraft, async (req, res) =>
     to: email,
     subject: `${req.user.name} shared "${d.title}" with you`,
     heading: 'A matter has been shared with you',
-    lines: [`${name ? `Dear ${name},` : 'Hello,'}`, `${req.user.name} has shared the matter "${d.title}" (${d.matter_no}) with you on LexDraft.`,
+    lines: [`${name ? `Dear ${name},` : 'Hello,'}`, `${req.user.name} has shared the matter "${d.title}" (${d.matter_no}) with you on Tabellio.`,
       'Open it with the button below — no password needed. You will be asked for your name.'],
     button: 'Open the matter', url: link,
     footer: `This link is personal to you and works for ${LINK_DAYS} days. Please don't forward it.`,
@@ -1174,8 +1174,8 @@ app.post('/api/team', auth, headOnly, (req, res) => {
   db.prepare('INSERT INTO users (name, email, role, title, color, pass_hash, created_at) VALUES (?,?,?,?,?,?,?)')
     .run(name, email, 'team', String(req.body?.title || 'Associate').slice(0, 60), nextColor(), '', now());
   sendMail({
-    to: email, subject: 'You have been added to LexDraft',
-    heading: 'Welcome to the team', lines: [`Dear ${name},`, `${req.user.name} has added you to the firm's LexDraft workspace.`, 'Open the site, choose "Set up account", and use this email address to choose your password.'],
+    to: email, subject: 'You have been added to Tabellio',
+    heading: 'Welcome to the team', lines: [`Dear ${name},`, `${req.user.name} has added you to the firm's Tabellio workspace.`, 'Open the site, choose "Set up account", and use this email address to choose your password.'],
     button: 'Set up my account', url: originOf(req),
   });
   res.json({ ok: true });
@@ -1237,5 +1237,5 @@ app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 // Run as a normal server locally (`npm start`); on Vercel the app is imported by api/index.js instead.
-if (require.main === module) app.listen(PORT, () => console.log(`LexDraft running at http://localhost:${PORT}`));
+if (require.main === module) app.listen(PORT, () => console.log(`Tabellio running at http://localhost:${PORT}`));
 module.exports = app;

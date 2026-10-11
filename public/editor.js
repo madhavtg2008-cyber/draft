@@ -1,4 +1,4 @@
-// ================= LexDraft — Word-style formatting, find & replace =================
+// ================= Tabellio — Word-style formatting, find & replace =================
 // Loaded after app.js; shares its globals ($, $$, state, esc, editor, setDocState, lsGet, lsSet).
 
 const ed = editor;
