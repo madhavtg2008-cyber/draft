@@ -23,15 +23,29 @@ const pdfParse = require('pdf-parse/lib/pdf-parse.js'); // PDF → text
 const PORT = process.env.PORT || 3000;
 // Serverless hosts (Vercel) only allow writing to /tmp — which is temporary there.
 const DB_PATH = process.env.DB_PATH || (process.env.VERCEL ? '/tmp/lexdraft.db' : path.join(__dirname, 'lexdraft.db'));
-const db = new DatabaseSync(DB_PATH);
+// With TURSO_DATABASE_URL set, everything lives in a Turso cloud database (SQLite, kept permanently),
+// so the site can run on hosts with no lasting disk, like Vercel. Otherwise it's a local SQLite file.
+const CLOUD_DB = process.env.TURSO_DATABASE_URL || '';
+function openCloudDb(url, authToken) {
+  const raw = new (require('libsql'))(url, { authToken });
+  const strip = (row) => { if (row) delete row._metadata; return row; };
+  return {
+    exec: (sql) => raw.exec(sql),
+    prepare(sql) {
+      const st = raw.prepare(sql);
+      return { get: (...a) => strip(st.get(...a)), all: (...a) => st.all(...a).map(strip), run: (...a) => st.run(...a) };
+    },
+  };
+}
+const db = CLOUD_DB ? openCloudDb(CLOUD_DB, process.env.TURSO_AUTH_TOKEN) : new DatabaseSync(DB_PATH);
 const LANES = ['client', 'final', 'team'];
 const STATUSES = ['drafting', 'client_review', 'negotiation', 'approved', 'executed'];
 // Distinct, legible-on-paper colours handed out to users in order
 const PALETTE = ['#3b4fd8', '#0f8a7e', '#d0571b', '#a23ec9', '#c2283f', '#2f8f2f', '#b8860b', '#1f7fbf', '#8a5a2b', '#d63d8f'];
 
 // ---------- schema ----------
+if (!CLOUD_DB) db.exec('PRAGMA journal_mode = WAL;');
 db.exec(`
-  PRAGMA journal_mode = WAL;
   PRAGMA foreign_keys = ON;
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -451,8 +465,8 @@ function laneInfo(user, draft, lane) {
 // Demo accounts & sample matters exist only for local testing. On a live server (NODE_ENV=production,
 // or DEMO=false) none are created: the Team Head comes from the HEAD_EMAIL / HEAD_PASSWORD / HEAD_NAME settings.
 const LIVE = process.env.NODE_ENV === 'production' || !!process.env.RENDER;
-// On Vercel the database lives in /tmp and resets, so it runs as a demo with sample accounts unless DEMO=false.
-const DEMO = process.env.DEMO ? process.env.DEMO === 'true' : (!!process.env.VERCEL || !LIVE);
+// On Vercel without a cloud database, data lives in /tmp and resets, so it runs as a demo with sample accounts.
+const DEMO = process.env.DEMO ? process.env.DEMO === 'true' : ((!!process.env.VERCEL && !CLOUD_DB) || !LIVE);
 if (!DEMO && db.prepare('SELECT COUNT(*) AS n FROM users').get().n === 0) {
   const email = String(process.env.HEAD_EMAIL || '').toLowerCase().trim();
   const pw = String(process.env.HEAD_PASSWORD || '');
@@ -1293,6 +1307,8 @@ app.get('/api/events', auth, (req, res) => {
 });
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
+app.get('/privacy', (req, res) => res.sendFile(path.join(__dirname, 'public', 'legal', 'privacy.html')));
+app.get('/terms', (req, res) => res.sendFile(path.join(__dirname, 'public', 'legal', 'terms.html')));
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 // Run as a normal server locally (`npm start`); on Vercel the app is imported by api/index.js instead.

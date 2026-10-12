@@ -4,7 +4,7 @@
     {
       "src": "server.js",
       "use": "@vercel/node",
-      "config": { "includeFiles": ["public/**", "lib/**", "node_modules/@fontsource/**"], "maxDuration": 60 }
+      "config": { "includeFiles": ["public/**", "lib/**", "node_modules/@fontsource/**", "node_modules/@libsql/**", "node_modules/libsql/**"], "maxDuration": 60 }
     }
   ],
   "routes": [{ "src": "/(.*)", "dest": "/server.js" }]
