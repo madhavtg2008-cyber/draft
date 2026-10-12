@@ -176,8 +176,8 @@ body.role-client .card-team .card-seal { display: grid; justify-items: center; g
 .doc-right { display: flex; align-items: center; gap: 16px; flex: none; }
 .doc-right .state { font-size: 11px; color: var(--mute); white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 
-.doc-actions { flex: none; display: flex; align-items: center; justify-content: center; gap: 22px; min-height: 0; padding: 0 22px; }
-.doc-actions:not(:empty) { min-height: 50px; border-bottom: 1px solid var(--line); }
+.doc-actions { flex: none; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px 22px; min-height: 0; padding: 0 22px; }
+.doc-actions:not(:empty) { min-height: 50px; padding-top: 7px; padding-bottom: 7px; border-bottom: 1px solid var(--line); }
 .doc-actions .note { font: italic 14px var(--body); color: var(--mute); }
 .doc-actions .note button { color: var(--chalk); text-decoration: underline; text-underline-offset: 3px; font: inherit; }
 
@@ -778,3 +778,4 @@ body.role-client .mdate { cursor: default; border-style: solid; }
 .tp-perm input:focus-visible + .tp-switch { outline: 2px solid var(--ink); outline-offset: 2px; }
 .tp-remove { margin: 12px 0 0 42px; font-size: 12px; color: var(--graphite); text-decoration: underline; text-underline-offset: 2px; }
 .tp-remove:hover, .tp-remove.armed { color: #b3261e; }
+.caption-right { align-self: flex-start; margin-top: -6px; } /* profile and Share matter sit up at the top right */

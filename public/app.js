@@ -489,6 +489,7 @@ function renderActions() {
             <button class="link" data-preview="${r.id}">preview</button><button class="link" data-decline="${r.id}">decline</button></span>
            <button class="hold" data-act="req-approve" data-req="${r.id}">Hold to upload to clean draft →</button>`
         : hold('promote-team', 'Hold to upload to clean draft →');
+      html += hold('to-client', '← Hold to send to client draft');
     } else {
       const mine = reqs.find((r) => r.requested_by === state.me.id);
       html += mine
@@ -867,6 +868,10 @@ async function runAction(btn) {
       const msg = r.requested ? `Request sent — ${headName} will upload it` : 'Uploaded to the clean draft';
       ledger(r.requested ? `Asked ${headName} to upload the team draft to the clean draft.` : 'The team draft was uploaded to the clean draft.');
       confirmDone(msg, { sound: !r.requested });
+    } else if (act === 'to-client') {
+      await api('POST', `/api/drafts/${id}/to-client`);
+      ledger('The team draft was sent to the client draft.');
+      confirmDone('Sent to the client draft', { sound: true });
     } else if (act === 'newdoc') {
       await api('POST', `/api/drafts/${id}/lanes/team/new-document`, { template: btn.dataset.template });
       state.newDoc = null;

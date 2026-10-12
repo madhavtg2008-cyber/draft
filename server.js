@@ -905,6 +905,17 @@ app.post('/api/drafts/:id/promote', auth, teamOnly, loadDraft, (req, res) => {
   res.json({ ok: true });
 });
 
+// Send the team draft to the client draft (team-only remarks stripped), so the client sees the
+// firm's edited version. Same right as uploading to the clean draft: the Head, or associates allowed to.
+app.post('/api/drafts/:id/to-client', auth, teamOnly, loadDraft, (req, res) => {
+  if (!canUploadClean(req.user)) return res.status(403).json({ error: 'Only the Team Head (or someone they allow) can send the team draft to the client' });
+  const content = stripTeamNotes(latest(req.draft.id, 'team').content);
+  saveLane(req.draft.id, 'client', content, req.user, 'Sent from the team draft', true);
+  logActivity(req.draft.id, 'client', 'sent the team draft to the client draft', req.user.id);
+  laneChanged(req.draft.id, 'client', req.user, 'promote');
+  res.json({ ok: true });
+});
+
 // Team Head approves or declines an associate's request; the requester (or Head) may withdraw it
 app.post('/api/drafts/:id/requests/:rid', auth, teamOnly, loadDraft, (req, res) => {
   const r = db.prepare("SELECT * FROM requests WHERE id = ? AND draft_id = ? AND status = 'pending'").get(Number(req.params.rid), req.draft.id);
