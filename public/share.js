@@ -54,6 +54,7 @@ async function setupSocial() {
   if (authConfig) return;
   try { authConfig = await api('GET', '/api/auth/config'); } catch { authConfig = {}; }
   $('.demo').classList.toggle('hidden', !authConfig.demo); // demo buttons only when running locally
+  $('#appleBtn').classList.toggle('hidden', !authConfig.apple); // Apple's button shows only once it's set up
   if (authConfig.google) {
     try {
       await loadScript('https://accounts.google.com/gsi/client');
@@ -65,7 +66,7 @@ async function setupSocial() {
   if (authConfig.apple) {
     try {
       await loadScript('https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js');
-      AppleID.auth.init({ clientId: authConfig.apple.clientId, scope: 'name email', redirectURI: authConfig.apple.redirectURI, usePopup: true });
+      AppleID.auth.init({ clientId: authConfig.apple.clientId, scope: 'name email', redirectURI: authConfig.apple.redirectURI || location.origin, usePopup: true });
     } catch { /* message below */ }
   }
 }
