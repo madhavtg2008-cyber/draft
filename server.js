@@ -153,6 +153,7 @@ for (const sql of [
   'ALTER TABLE users ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0',      // removed from the team
   'ALTER TABLE users ADD COLUMN firm_id INTEGER',                          // the law firm a lawyer belongs to (clients: none)
   'ALTER TABLE drafts ADD COLUMN firm_id INTEGER',                         // the firm that owns the matter
+  'ALTER TABLE users ADD COLUMN tour_done INTEGER NOT NULL DEFAULT 0',     // has seen the first-time tutorial
 ]) { try { db.exec(sql); } catch { /* already there */ } }
 // Each law firm is its own private workspace with its own Team Head, team, matters and plan.
 db.exec(`CREATE TABLE IF NOT EXISTS firms (
@@ -200,7 +201,7 @@ function firmInfo(u) {
   const f = getFirm(u.firm_id), p = planOf(f);
   return { id: f.id, name: f.name, plan: p.id, seats: p.seats, seatsUsed: seatsUsed(f.id), matters: p.matters, mattersUsed: mattersUsed(f.id) };
 }
-const meUser = (u) => u && { ...publicUser(u), firm: firmInfo(u) };
+const meUser = (u) => u && { ...publicUser(u), firm: firmInfo(u), tourDone: !!u.tour_done };
 // a new law firm: its own workspace on the Free plan, with this person as Team Head
 function createHead(name, email, passHash, firmName) {
   const fid = createFirm(firmName || `${String(name).trim()}'s firm`);
@@ -716,6 +717,11 @@ app.post('/api/auth/logout', (req, res) => {
   res.json({ ok: true });
 });
 app.get('/api/me', auth, (req, res) => res.json({ user: meUser(req.user) }));
+// the first-time tutorial: shown once per person, then never again (unless they replay it)
+app.post('/api/me/tour', auth, (req, res) => {
+  db.prepare('UPDATE users SET tour_done = ? WHERE id = ?').run(req.body?.done === false ? 0 : 1, req.user.id);
+  res.json({ ok: true });
+});
 app.get('/api/clients', auth, teamOnly, (req, res) => {
   // only this firm's clients: people on its matters, or shared into them
   res.json({ clients: db.prepare(`SELECT id, name, email, title, color, pass_hash != '' AS active FROM users u WHERE role = 'client' AND (

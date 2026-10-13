@@ -235,7 +235,7 @@ $('#profileBtn').addEventListener('click', (e) => {
   const open = $('#profileMenu').classList.toggle('hidden') === false;
   $('#profileBtn').classList.toggle('on', open);
 });
-document.addEventListener('mousedown', (e) => { if (!e.target.closest('.profile')) closeProfile(); });
+document.addEventListener('mousedown', (e) => { if (!e.target.closest('.profile') && !e.target.closest('.tour-card')) closeProfile(); });
 $$('.theme-opt').forEach((b) => b.addEventListener('click', () => applyTheme(b.dataset.theme)));
 $('#pmOut').addEventListener('click', () => { closeProfile(); $('#logoutBtn').click(); });
 

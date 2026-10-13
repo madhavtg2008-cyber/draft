@@ -237,10 +237,11 @@ $('#matterList').addEventListener('keydown', (e) => {
 const nf = $('#newForm');
 let nfFile = null;
 $('#newToggle').addEventListener('click', async () => {
-  const { clients } = await api('GET', '/api/clients');
+  let clients = [];
+  try { ({ clients } = await api('GET', '/api/clients')); } catch { /* still open the form */ }
   $('#clientSelect').innerHTML = '<option value="__new">＋ New client…</option><option value="">No client yet</option>'
     + clients.map((c) => `<option value="${c.id}">${esc(c.name)}${c.title ? ` · ${esc(c.title)}` : ''}${c.active ? '' : ' (invited)'}</option>`).join('');
-  $('#clientSelect').value = clients.length ? String(clients[0].id) : '__new';
+  $('#clientSelect').value = clients.length ? String(clients[0].id) : ''; // a new firm starts with "No client yet"
   toggleNewClient();
   $('#newToggle').classList.add('hidden');
   nf.classList.remove('hidden');
@@ -272,7 +273,7 @@ nf.addEventListener('submit', async (e) => {
   $('#nfError').textContent = '';
   try {
     const body = { title: f.title, counterparty: f.counterparty, template: f.template, matterDate: f.matterDate };
-    if (f.clientId === '__new') body.newClient = { name: f.ncName, company: f.ncCompany, email: f.ncEmail };
+    if (f.clientId === '__new' && (f.ncName || f.ncEmail)) body.newClient = { name: f.ncName, company: f.ncCompany, email: f.ncEmail };
     else if (f.clientId) body.clientId = Number(f.clientId);
     if (nfFile) {
       submit.textContent = 'Reading file…';
