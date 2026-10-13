@@ -25,7 +25,12 @@ const PORT = process.env.PORT || 3000;
 const DB_PATH = process.env.DB_PATH || (process.env.VERCEL ? '/tmp/lexdraft.db' : path.join(__dirname, 'lexdraft.db'));
 // With TURSO_DATABASE_URL set, everything lives in a Turso cloud database (SQLite, kept permanently),
 // so the site can run on hosts with no lasting disk, like Vercel. Otherwise it's a local SQLite file.
-const CLOUD_DB = process.env.TURSO_DATABASE_URL || '';
+// (Vercel's Turso integration may add its own prefix to the names, so any libsql:// URL setting is accepted.)
+const cloudKey = ['TURSO_DATABASE_URL', 'LIBSQL_URL'].find((k) => process.env[k])
+  || Object.keys(process.env).find((k) => /DATABASE_URL$|_URL$/.test(k) && String(process.env[k]).startsWith('libsql://'));
+const CLOUD_DB = cloudKey ? process.env[cloudKey] : '';
+const CLOUD_TOKEN = process.env.TURSO_AUTH_TOKEN || process.env.LIBSQL_AUTH_TOKEN
+  || (cloudKey && process.env[cloudKey.replace(/(DATABASE_)?URL$/, 'AUTH_TOKEN')]) || '';
 function openCloudDb(url, authToken) {
   const raw = new (require('libsql'))(url, { authToken });
   const strip = (row) => { if (row) delete row._metadata; return row; };
@@ -37,7 +42,8 @@ function openCloudDb(url, authToken) {
     },
   };
 }
-const db = CLOUD_DB ? openCloudDb(CLOUD_DB, process.env.TURSO_AUTH_TOKEN) : new DatabaseSync(DB_PATH);
+const db = CLOUD_DB ? openCloudDb(CLOUD_DB, CLOUD_TOKEN) : new DatabaseSync(DB_PATH);
+if (CLOUD_DB) console.log(`Using the cloud database from ${cloudKey}`);
 const LANES = ['client', 'final', 'team'];
 const STATUSES = ['drafting', 'client_review', 'negotiation', 'approved', 'executed'];
 // Distinct, legible-on-paper colours handed out to users in order
@@ -477,9 +483,10 @@ function hasAccess(user, draftId) {
 }
 function canSeeDraft(user, draft) {
   if (!draft || !user) return false;
-  // a lawyer never sees another firm's matters, even if someone shares one with them
-  if (user.role === 'team' && draft.firm_id !== user.firm_id) return false;
-  return !!user.head || draft.created_by === user.id || draft.client_id === user.id || hasAccess(user, draft.id);
+  // Lawyers see every matter of their own firm (one shared set of documents for the whole team),
+  // and never another firm's. Clients see only the matters that are theirs or shared with them.
+  if (user.role === 'team') return draft.firm_id === user.firm_id;
+  return draft.client_id === user.id || hasAccess(user, draft.id);
 }
 function grantAccess(draftId, email, byId) {
   db.prepare('INSERT OR IGNORE INTO matter_access (draft_id, email, added_by, created_at) VALUES (?,?,?,?)').run(draftId, String(email).toLowerCase().trim(), byId ?? null, now());
@@ -630,7 +637,13 @@ function parseCookies(req) {
 // Sessions. With SESSION_SECRET set (do this on any serverless host), the cookie itself is signed,
 // so every server instance can verify it. Without it, sessions live in the database.
 const SESSION_SECRET = process.env.SESSION_SECRET && process.env.SESSION_SECRET.length >= 16 ? process.env.SESSION_SECRET
-  : process.env.VERCEL ? 'tabellio-vercel-demo-only-secret' : null; // Vercel demo: cookies must survive across instances
+  : process.env.VERCEL && !CLOUD_DB ? 'tabellio-vercel-demo-only-secret' : null; // Vercel demo (no shared database): cookies must survive across instances
+// A random key kept in the database itself, so every server instance shares it without anyone handling secrets.
+function storedKey(name) {
+  db.exec('CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
+  db.prepare('INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, ?)').run(name, crypto.randomBytes(32).toString('hex'));
+  return db.prepare('SELECT value FROM app_settings WHERE key = ?').get(name).value;
+}
 const SESSION_DAYS = 14;
 const sign = (data) => crypto.createHmac('sha256', SESSION_SECRET).update(data).digest('base64url');
 function userFromToken(token) {
@@ -734,11 +747,9 @@ app.get('/api/drafts', auth, (req, res) => {
   const base = 'SELECT d.*, c.name AS client_name FROM drafts d LEFT JOIN users c ON c.id = d.client_id';
   const own = 'd.created_by = ? OR d.client_id = ? OR EXISTS (SELECT 1 FROM matter_access a WHERE a.draft_id = d.id AND a.email = ?)';
   const me = [req.user.id, req.user.id, String(req.user.email).toLowerCase()];
-  const rows = req.user.head
+  const rows = req.user.role === 'team' // the whole team shares the firm's matters
     ? db.prepare(`${base} WHERE d.firm_id = ? ORDER BY d.updated_at DESC`).all(req.user.firm_id)
-    : req.user.role === 'team'
-      ? db.prepare(`${base} WHERE d.firm_id = ? AND (${own}) ORDER BY d.updated_at DESC`).all(req.user.firm_id, ...me)
-      : db.prepare(`${base} WHERE ${own} ORDER BY d.updated_at DESC`).all(...me);
+    : db.prepare(`${base} WHERE ${own} ORDER BY d.updated_at DESC`).all(...me);
   res.json({ drafts: rows });
 });
 
@@ -1206,9 +1217,8 @@ app.get('/api/drafts/:id/access', auth, teamOnly, loadDraft, (req, res) => {
     const u = userByEmail(r.email);
     return { email: r.email, name: u?.name || null, role: u?.role || 'client', active: !!u?.pass_hash, removable: true };
   });
-  const head = db.prepare('SELECT * FROM users WHERE head = 1 AND firm_id = ?').get(d.firm_id ?? -1);
-  const creator = d.created_by ? getUser(d.created_by) : null;
-  res.json({ people, always: [head, creator].filter(Boolean).filter((u, i, a) => a.findIndex((x) => x.id === u.id) === i).map(publicUser) });
+  const team = db.prepare("SELECT * FROM users WHERE role = 'team' AND disabled = 0 AND firm_id = ? ORDER BY head DESC, name").all(d.firm_id ?? -1);
+  res.json({ people, always: team.map(publicUser) }); // the whole firm's team
 });
 
 // share with someone by email: they get access and a personal link (emailed to them)
@@ -1334,7 +1344,7 @@ app.post('/api/team', auth, headOnly, (req, res) => {
   }
   sendMail({
     to: email, subject: 'You have been added to Tabellio',
-    heading: 'Welcome to the team', lines: [`Dear ${name},`, `${req.user.name} has added you to the firm's Tabellio workspace.`, 'Open the site, choose "Set up account", and use this email address to choose your password.'],
+    heading: 'Welcome to the team', lines: [`Dear ${name},`, `${req.user.name} has added you to the firm's Tabellio workspace.`, 'Open Tabellio and sign in with Google using this email address — or choose "Set up account" and pick a password.'],
     button: 'Set up my account', url: originOf(req),
   });
   res.json({ ok: true });
@@ -1355,7 +1365,7 @@ app.get('/api/auth/config', (req, res) => res.json({
 // A verified email from Google/Apple signs that person in. Someone new is first asked whether they are
 // a client or a law firm: they get a short-lived signed ticket that carries the verified email to that step.
 const SOCIAL = '!social'; // pass_hash for accounts that sign in only with Google/Apple
-const TICKET_KEY = SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+const TICKET_KEY = SESSION_SECRET || storedKey('ticket_key');
 const ticketSig = (data) => crypto.createHmac('sha256', TICKET_KEY).update(`ticket:${data}`).digest('base64url');
 function makeTicket(email, name) {
   const data = Buffer.from(JSON.stringify({ email: String(email).toLowerCase().trim(), name, exp: Date.now() + 15 * 60000 })).toString('base64url');

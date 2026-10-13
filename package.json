@@ -13,6 +13,7 @@
     "@fontsource/cousine": "^5.3.0",
     "@fontsource/eb-garamond": "^5.3.0",
     "@fontsource/tinos": "^5.3.0",
+    "@vercel/functions": "^3.9.11",
     "@xmldom/xmldom": "^0.8.15",
     "docx": "^9.9.0",
     "express": "^4.21.2",
