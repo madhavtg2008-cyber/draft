@@ -1,5 +1,5 @@
 {
-  "name": "tabellio",
+  "name": "zoit",
   "version": "1.0.0",
   "description": "Three-lane legal drafting workspace: client draft, clean final, privileged team draft.",
   "main": "server.js",

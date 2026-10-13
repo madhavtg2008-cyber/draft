@@ -1,8 +1,8 @@
-# Render blueprint — creates the Tabellio web service with a permanent disk for its data.
+# Render blueprint — creates the Zoit web service with a permanent disk for its data.
 # Render dashboard → New → Blueprint → pick this GitHub repo. It will ask for the values marked "sync: false".
 services:
   - type: web
-    name: tabellio
+    name: zoit
     runtime: node
     plan: starter            # always on; a disk needs a paid plan (Free instances sleep and lose data)
     region: singapore        # closest Render region to India
@@ -10,7 +10,7 @@ services:
     startCommand: npm start
     healthCheckPath: /
     disk:
-      name: tabellio-data
+      name: zoit-data
       mountPath: /var/data
       sizeGB: 1              # matters, drafts and history live here and survive restarts
     envVars:
@@ -19,7 +19,7 @@ services:
       - key: NODE_VERSION
         value: "22.13.0"
       - key: DB_PATH
-        value: /var/data/tabellio.db
+        value: /var/data/zoit.db
       - key: OUTBOX_DIR
         value: /var/data/outbox
       - key: HEAD_NAME       # the Team Head account, created on first start
@@ -33,7 +33,7 @@ services:
       - key: SESSION_SECRET
         generateValue: true
       # Email (invites, clean-draft updates, new lawyers). Without these, emails are saved in /var/data/outbox.
-      - key: MAIL_FROM       # e.g. Tabellio <noreply@yourfirm.com>
+      - key: MAIL_FROM       # e.g. Zoit <noreply@yourfirm.com>
         sync: false
       - key: SMTP_HOST       # e.g. smtp-relay.brevo.com
         sync: false

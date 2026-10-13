@@ -1,4 +1,4 @@
-// ================= Tabellio — the first-time tour =================
+// ================= Zoit — the first-time tour =================
 // Shown once per person, the first time they sign in (remembered on the server, so it never comes back
 // on another device). A spotlight glides between the real controls; Esc or "Skip" ends it.
 // It can be replayed from the profile menu.
@@ -8,7 +8,7 @@ const isTeam = () => state.me?.role === 'team';
 
 function tourSteps() {
   const s = [
-    { title: () => `Welcome to Tabellio, ${first()}.`, body: 'A one-minute walk around your new drafting room. Press <kbd>→</kbd> or click Next — <kbd>Esc</kbd> skips.', hello: true },
+    { title: () => `Welcome to Zoit, ${first()}.`, body: 'A one-minute walk around your new drafting room. Press <kbd>→</kbd> or click Next — <kbd>Esc</kbd> skips.', hello: true },
     { el: '#matterList', title: isTeam() ? 'Your matters' : 'Your matters',
       body: isTeam() ? 'Every case lives here. Each one is private — only your firm, its client and the people you share it with can open it.'
         : 'Everything your lawyer has shared with you. Nobody else can see these.' },
@@ -27,7 +27,7 @@ function tourSteps() {
   }
   s.push(
     { el: '.themes', title: 'Make it yours', body: 'Go on — click a theme. Black, White or Navy.', try: true, before: openProfileForTour, after: closeProfile },
-    { title: () => 'You’re all set.', body: isTeam() ? 'Open a sheet, start drafting, and let Tabellio keep the paper trail.' : 'Open your Client Draft whenever you’re ready.', done: true },
+    { title: () => 'You’re all set.', body: isTeam() ? 'Open a sheet, start drafting, and let Zoit keep the paper trail.' : 'Open your Client Draft whenever you’re ready.', done: true },
   );
   return s;
 }

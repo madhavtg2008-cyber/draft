@@ -1,4 +1,4 @@
-// ================= Tabellio — "client or law firm?" and the firm's plan =================
+// ================= Zoit — "client or law firm?" and the firm's plan =================
 
 // ---------- the client / law firm choice (email sign-up, and after Google or Apple) ----------
 function syncKind(form) {

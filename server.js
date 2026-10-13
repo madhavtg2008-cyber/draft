@@ -1,4 +1,4 @@
-// Tabellio — three-lane legal drafting server
+// Zoit — three-lane legal drafting server
 // Lanes: "client" (client-editable), "final" (clean draft, team-controlled), "team" (privileged, team-only)
 // Every edit is attributed to its author. Edits by anyone other than the Team Head stay pending
 // until the Team Head confirms (or rejects) them.
@@ -224,7 +224,7 @@ function createHead(name, email, passHash, firmName) {
 function seedSampleMatter(firmId, head) {
   const t = now();
   const client = getUser(db.prepare('INSERT INTO users (name, email, role, title, color, pass_hash, created_at) VALUES (?,?,?,?,?,?,?)')
-    .run('Aarav Mehta (sample)', `sample-client-${firmId}-${crypto.randomBytes(4).toString('hex')}@tabellio.invalid`, 'client', 'Mehta Ventures Pvt. Ltd.', PALETTE[2], '!sample', t).lastInsertRowid);
+    .run('Aarav Mehta (sample)', `sample-client-${firmId}-${crypto.randomBytes(4).toString('hex')}@zoit.invalid`, 'client', 'Mehta Ventures Pvt. Ltd.', PALETTE[2], '!sample', t).lastInsertRowid);
   const id = db.prepare('INSERT INTO drafts (title, matter_no, client_id, counterparty, matter_date, status, created_by, firm_id, sample, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
     .run('Sample · Mutual NDA — Northwind', 'SAMPLE-0001', client.id, 'Northwind Analytics LLC', new Date().toISOString().slice(0, 10), 'negotiation', head.id, firmId, 1, t, t).lastInsertRowid;
   const html = clean(textToHtml(`MUTUAL NON-DISCLOSURE AGREEMENT
@@ -681,7 +681,7 @@ function parseCookies(req) {
 // Sessions. With SESSION_SECRET set (do this on any serverless host), the cookie itself is signed,
 // so every server instance can verify it. Without it, sessions live in the database.
 const SESSION_SECRET = process.env.SESSION_SECRET && process.env.SESSION_SECRET.length >= 16 ? process.env.SESSION_SECRET
-  : process.env.VERCEL && !CLOUD_DB ? 'tabellio-vercel-demo-only-secret' : null; // Vercel demo (no shared database): cookies must survive across instances
+  : process.env.VERCEL && !CLOUD_DB ? 'zoit-vercel-demo-only-secret' : null; // Vercel demo (no shared database): cookies must survive across instances
 // A random key kept in the database itself, so every server instance shares it without anyone handling secrets.
 function storedKey(name) {
   db.exec('CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
@@ -1000,7 +1000,7 @@ function notifyCleanDraft(draftId, head, origin) {
       heading: 'Your clean draft has been updated',
       lines: [`Dear ${c.name || 'client'},`, `${head.name} has updated the clean draft of "${d.title}" (${d.matter_no}).`, 'Use the button below to read it. The link is personal to you.'],
       button: 'Open the clean draft', url: link,
-      footer: 'Sent by Tabellio. If you were not expecting this email, you can ignore it.',
+      footer: 'Sent by Zoit. If you were not expecting this email, you can ignore it.',
     });
   }
 }
@@ -1118,7 +1118,7 @@ app.get('/api/drafts/:id/lanes/:lane/docx', auth, loadDraft, laneParam, async (r
   const footer = `<p style="text-align: center; font-size: 8pt; color: #555555">Exported ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</p>`;
   try {
     const buf = await HTMLtoDOCX(`<!DOCTYPE html><html><body>${html}</body></html>`, header, {
-      title: `${d.title} — ${LANE_TITLES[lane]}`, creator: 'Tabellio', font: 'Garamond', fontSize: 24,
+      title: `${d.title} — ${LANE_TITLES[lane]}`, creator: 'Zoit', font: 'Garamond', fontSize: 24,
       header: true, footer: true, pageNumber: true,
       orientation: pageOf(d).w > pageOf(d).h ? 'landscape' : 'portrait',
       pageSize: { width: pageOf(d).w, height: pageOf(d).h },
@@ -1191,7 +1191,7 @@ app.get('/api/drafts/:id/lanes/:lane/pdf', auth, loadDraft, laneParam, (req, res
     fitImages(content, (pg.w - pg.left - pg.right) / 20, (pg.h - pg.top - pg.bottom) / 20);
     mapFonts(content);
     const doc = pdfPrinter.createPdfKitDocument({
-      info: { title: `${d.title} — ${LANE_TITLES[lane]}`, author: 'Tabellio', creator: 'Tabellio' },
+      info: { title: `${d.title} — ${LANE_TITLES[lane]}`, author: 'Zoit', creator: 'Zoit' },
       pageSize: { width: pg.w / 20, height: pg.h / 20 }, pageMargins: [pg.left / 20, pg.top / 20, pg.right / 20, pg.bottom / 20],
       defaultStyle: { font: 'Garamond', fontSize: 12, lineHeight: 1.25 },
       header: () => ({ text: `${d.matter_no}  ·  ${LANE_TITLES[lane].toUpperCase()}`, alignment: 'right', fontSize: 8, color: '#555555', margin: [pg.left / 20, Math.min(34, pg.top / 40), pg.right / 20, 0] }),
@@ -1209,7 +1209,7 @@ app.get('/api/drafts/:id/lanes/:lane/pdf', auth, loadDraft, laneParam, (req, res
   }
 });
 
-// ---------- templates: new documents made inside Tabellio ----------
+// ---------- templates: new documents made inside Zoit ----------
 function templateHtml(id, ctx) {
   const html = clean(textToHtml(renderTemplate(id, ctx)));
   return id === 'blank' ? `${html}<p><br /></p>` : html;
@@ -1289,7 +1289,7 @@ app.post('/api/drafts/:id/share', auth, teamOnly, loadDraft, async (req, res) =>
     to: email,
     subject: `${req.user.name} shared "${d.title}" with you`,
     heading: 'A matter has been shared with you',
-    lines: [`${name ? `Dear ${name},` : 'Hello,'}`, `${req.user.name} has shared the matter "${d.title}" (${d.matter_no}) with you on Tabellio.`,
+    lines: [`${name ? `Dear ${name},` : 'Hello,'}`, `${req.user.name} has shared the matter "${d.title}" (${d.matter_no}) with you on Zoit.`,
       'Open it with the button below — no password needed. You will be asked for your name.'],
     button: 'Open the matter', url: link,
     footer: `This link is personal to you and works for ${LINK_DAYS} days. Please don't forward it.`,
@@ -1374,7 +1374,7 @@ app.post('/api/team', auth, headOnly, (req, res) => {
   const email = String(req.body?.email || '').toLowerCase().trim();
   if (!name || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return res.status(400).json({ error: 'Enter their name and a valid email' });
   const existing = userByEmail(email);
-  if (existing?.role === 'team' && !existing.disabled) return res.status(409).json({ error: existing.firm_id === req.user.firm_id ? 'They are already on the team' : 'That person already belongs to another firm on Tabellio' });
+  if (existing?.role === 'team' && !existing.disabled) return res.status(409).json({ error: existing.firm_id === req.user.firm_id ? 'They are already on the team' : 'That person already belongs to another firm on Zoit' });
   if (existing && existing.role !== 'team') return res.status(409).json({ error: 'That email belongs to a client account' });
   const plan = planOf(getFirm(req.user.firm_id));
   if (seatsUsed(req.user.firm_id) >= plan.seats) {
@@ -1387,8 +1387,8 @@ app.post('/api/team', auth, headOnly, (req, res) => {
       .run(name, email, 'team', String(req.body?.title || 'Associate').slice(0, 60), nextColor(), '', req.user.firm_id, now());
   }
   sendMail({
-    to: email, subject: 'You have been added to Tabellio',
-    heading: 'Welcome to the team', lines: [`Dear ${name},`, `${req.user.name} has added you to the firm's Tabellio workspace.`, 'Open Tabellio and sign in with Google using this email address — or choose "Set up account" and pick a password.'],
+    to: email, subject: 'You have been added to Zoit',
+    heading: 'Welcome to the team', lines: [`Dear ${name},`, `${req.user.name} has added you to the firm's Zoit workspace.`, 'Open Zoit and sign in with Google using this email address — or choose "Set up account" and pick a password.'],
     button: 'Set up my account', url: originOf(req),
   });
   res.json({ ok: true });
@@ -1460,7 +1460,7 @@ app.post('/api/firm/plan', auth, headOnly, (req, res) => {
   if (target.matters && mattersUsed(firm.id) > target.matters) return res.status(400).json({ error: `Your firm has ${mattersUsed(firm.id)} matters; the ${target.name} plan includes ${target.matters}.` });
   if (target.price > current.price && !DEMO) {
     if (PAY_LINKS[target.id]) return res.json({ payUrl: PAY_LINKS[target.id] });
-    return res.status(501).json({ error: 'Online payment isn’t switched on yet — contact Tabellio to upgrade.' });
+    return res.status(501).json({ error: 'Online payment isn’t switched on yet — contact Zoit to upgrade.' });
   }
   db.prepare('UPDATE firms SET plan = ? WHERE id = ?').run(target.id, firm.id); // downgrades (and demo upgrades) apply at once
   res.json({ user: meUser(req.user) });
@@ -1519,5 +1519,5 @@ app.get('/pricing', (req, res) => res.sendFile(path.join(__dirname, 'public', 'l
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 // Run as a normal server locally (`npm start`); on Vercel the app is imported by api/index.js instead.
-if (require.main === module) app.listen(PORT, () => console.log(`Tabellio running at http://localhost:${PORT}`));
+if (require.main === module) app.listen(PORT, () => console.log(`Zoit running at http://localhost:${PORT}`));
 module.exports = app;

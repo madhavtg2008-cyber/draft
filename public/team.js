@@ -1,4 +1,4 @@
-// ================= Tabellio — the Team panel =================
+// ================= Zoit — the Team panel =================
 // Everyone on the legal team can see who's on it. The Team Head adds lawyers by email,
 // sets what each associate may do, and can remove people. Clients never see any of this.
 
