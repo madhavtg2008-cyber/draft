@@ -160,6 +160,7 @@ for (const sql of [
   'ALTER TABLE users ADD COLUMN firm_id INTEGER',                          // the law firm a lawyer belongs to (clients: none)
   'ALTER TABLE drafts ADD COLUMN firm_id INTEGER',                         // the firm that owns the matter
   'ALTER TABLE users ADD COLUMN tour_done INTEGER NOT NULL DEFAULT 0',     // has seen the first-time tutorial
+  'ALTER TABLE drafts ADD COLUMN sample INTEGER NOT NULL DEFAULT 0',       // the sample matter every new firm starts with
 ]) { try { db.exec(sql); } catch { /* already there */ } }
 // Each law firm is its own private workspace with its own Team Head, team, matters and plan.
 db.exec(`CREATE TABLE IF NOT EXISTS firms (
@@ -180,7 +181,7 @@ const CURRENCY = process.env.PLAN_CURRENCY || '₹';
 const getFirm = (id) => (id ? db.prepare('SELECT * FROM firms WHERE id = ?').get(id) : null);
 const planOf = (firm) => PLANS[firm?.plan] || PLANS.free;
 const seatsUsed = (firmId) => db.prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'team' AND disabled = 0 AND firm_id = ?").get(firmId).n;
-const mattersUsed = (firmId) => db.prepare('SELECT COUNT(*) AS n FROM drafts WHERE firm_id = ?').get(firmId).n;
+const mattersUsed = (firmId) => db.prepare('SELECT COUNT(*) AS n FROM drafts WHERE firm_id = ? AND sample = 0').get(firmId).n; // the sample is free
 function createFirm(name) {
   return db.prepare('INSERT INTO firms (name, plan, created_at) VALUES (?,?,?)').run(String(name || 'My firm').trim().slice(0, 80) || 'My firm', 'free', Date.now()).lastInsertRowid;
 }
@@ -211,8 +212,51 @@ const meUser = (u) => u && { ...publicUser(u), firm: firmInfo(u), tourDone: !!u.
 // a new law firm: its own workspace on the Free plan, with this person as Team Head
 function createHead(name, email, passHash, firmName) {
   const fid = createFirm(firmName || `${String(name).trim()}'s firm`);
-  return db.prepare('INSERT INTO users (name, email, role, title, color, head, pass_hash, firm_id, created_at) VALUES (?,?,?,?,?,?,?,?,?)')
+  const id = db.prepare('INSERT INTO users (name, email, role, title, color, head, pass_hash, firm_id, created_at) VALUES (?,?,?,?,?,?,?,?,?)')
     .run(String(name).trim().slice(0, 80), email, 'team', 'Team Head', PALETTE[0], 1, passHash, fid, Date.now()).lastInsertRowid;
+  try { seedSampleMatter(fid, getUser(id)); } catch (err) { console.error('sample matter:', err.message); } // never block sign-up
+  return id;
+}
+
+// Every new firm starts with one sample matter that shows the features: a client's edits waiting for
+// confirmation, remarks on both sides, a team-only note, and an upload request. The sample client is
+// a made-up person who can't sign in, and the sample doesn't count towards the plan's matters.
+function seedSampleMatter(firmId, head) {
+  const t = now();
+  const client = getUser(db.prepare('INSERT INTO users (name, email, role, title, color, pass_hash, created_at) VALUES (?,?,?,?,?,?,?)')
+    .run('Aarav Mehta (sample)', `sample-client-${firmId}-${crypto.randomBytes(4).toString('hex')}@tabellio.invalid`, 'client', 'Mehta Ventures Pvt. Ltd.', PALETTE[2], '!sample', t).lastInsertRowid);
+  const id = db.prepare('INSERT INTO drafts (title, matter_no, client_id, counterparty, matter_date, status, created_by, firm_id, sample, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+    .run('Sample · Mutual NDA — Northwind', 'SAMPLE-0001', client.id, 'Northwind Analytics LLC', new Date().toISOString().slice(0, 10), 'negotiation', head.id, firmId, 1, t, t).lastInsertRowid;
+  const html = clean(textToHtml(`MUTUAL NON-DISCLOSURE AGREEMENT
+
+This Mutual Non-Disclosure Agreement (the "Agreement") is entered into as of the Effective Date by and between Mehta Ventures Pvt. Ltd. ("Company") and Northwind Analytics LLC ("Counterparty").
+
+1. DEFINITION OF CONFIDENTIAL INFORMATION
+"Confidential Information" means all non-public information disclosed by either party, whether oral, written or electronic, that is marked confidential or would reasonably be understood to be confidential.
+
+2. OBLIGATIONS
+The receiving party shall hold Confidential Information in strict confidence and shall not disclose it to any third party without the prior written consent of the disclosing party.
+
+3. TERM
+This Agreement shall remain in effect for two (2) years from the Effective Date.
+
+4. GOVERNING LAW
+This Agreement shall be governed by the laws of India, and the courts at Mumbai shall have exclusive jurisdiction.`));
+  for (const lane of LANES) initLane(id, lane, html, head, 'Sample draft');
+  // the client proposes two changes — they wait for the Team Head to confirm or reject
+  saveLane(id, 'client', html.replace('two (2) years', 'three (3) years')
+    .replace('of the disclosing party.', 'of the disclosing party, except to its employees and advisors who need to know.'), client);
+  // the firm's own working copy, with a note only lawyers can see (stripped when it goes to the client or clean draft)
+  saveLane(id, 'team', html
+    + '<h3>5. RETURN OF MATERIALS</h3><p style="text-align: justify">Upon written request, the receiving party shall promptly return or destroy all Confidential Information.</p>'
+    + '<p><span style="background-color: #fff3a3"><strong>[TEAM NOTE:</strong> Client wants a 3-year term. Our fallback is 30 months. Do NOT share with the client.]</span></p>', head);
+  grantAccess(id, client.email, head.id);
+  const c = db.prepare('INSERT INTO comments (draft_id, lane, body, quote, author_id, created_at) VALUES (?,?,?,?,?,?)');
+  c.run(id, 'client', 'We need a longer term — our product roadmap runs three years.', 'three (3) years', client.id, t - 3500000);
+  c.run(id, 'client', 'Noted — we will reflect this after internal review.', null, head.id, t - 3000000);
+  c.run(id, 'team', 'Should advisors sign their own NDAs before they see anything?', 'RETURN OF MATERIALS', head.id, t - 1700000);
+  logActivity(id, 'final', 'opened the sample matter', head.id);
+  logActivity(id, 'client', 'proposed changes to the term and disclosure clauses', client.id);
 }
 const getUser = (id) => db.prepare('SELECT * FROM users WHERE id = ?').get(id);
 
@@ -737,7 +781,7 @@ app.post('/api/me/tour', auth, (req, res) => {
 });
 app.get('/api/clients', auth, teamOnly, (req, res) => {
   // only this firm's clients: people on its matters, or shared into them
-  res.json({ clients: db.prepare(`SELECT id, name, email, title, color, pass_hash != '' AS active FROM users u WHERE role = 'client' AND (
+  res.json({ clients: db.prepare(`SELECT id, name, email, title, color, pass_hash != '' AS active FROM users u WHERE role = 'client' AND pass_hash != '!sample' AND (
       id IN (SELECT client_id FROM drafts WHERE firm_id = ?)
       OR email IN (SELECT a.email FROM matter_access a JOIN drafts d ON d.id = a.draft_id WHERE d.firm_id = ?)) ORDER BY name`).all(req.user.firm_id, req.user.firm_id) });
 });
