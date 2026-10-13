@@ -169,7 +169,7 @@ const PLANS = {
   team: { id: 'team', name: 'Team', price: 250, seats: 5, matters: null },
   firm: { id: 'firm', name: 'Firm', price: 450, seats: 10, matters: null },
 };
-const CURRENCY = process.env.PLAN_CURRENCY || '$';
+const CURRENCY = process.env.PLAN_CURRENCY || '₹';
 const getFirm = (id) => (id ? db.prepare('SELECT * FROM firms WHERE id = ?').get(id) : null);
 const planOf = (firm) => PLANS[firm?.plan] || PLANS.free;
 const seatsUsed = (firmId) => db.prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'team' AND disabled = 0 AND firm_id = ?").get(firmId).n;
