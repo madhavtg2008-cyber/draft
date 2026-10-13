@@ -61,11 +61,29 @@
         <button class="btn-primary" type="submit">Enter</button>
       </form>
       <form id="registerForm" class="auth-form hidden">
+        <div class="kind" role="radiogroup" aria-label="I am">
+          <label><input type="radio" name="kind" value="client" checked /><span>I'm a client</span></label>
+          <label><input type="radio" name="kind" value="firm" /><span>I run a law firm</span></label>
+        </div>
         <input name="name" required placeholder="Full name" />
-        <input name="company" placeholder="Company (optional)" />
+        <input name="firmName" class="for-firm" placeholder="Firm name" />
+        <input name="company" class="for-client" placeholder="Company (optional)" />
         <input name="email" type="email" required placeholder="Email" />
         <input name="password" type="password" minlength="6" required placeholder="Password, 6+ characters" autocomplete="new-password" />
         <button class="btn-primary" type="submit">Create account</button>
+      </form>
+      <!-- after Google/Apple, someone new says who they are -->
+      <form id="chooseForm" class="auth-form hidden">
+        <p class="choose-hi">Welcome, <b id="chooseName"></b>. Who are you joining as?</p>
+        <div class="kind" role="radiogroup" aria-label="I am">
+          <label><input type="radio" name="kind" value="client" checked /><span>I'm a client</span></label>
+          <label><input type="radio" name="kind" value="firm" /><span>I run a law firm</span></label>
+        </div>
+        <input name="firmName" class="for-firm" placeholder="Firm name" />
+        <p class="kind-note for-client">You'll see the matters your lawyer shares with you.</p>
+        <p class="kind-note for-firm">You'll be the Team Head of your firm, starting on the Free plan.</p>
+        <button class="btn-primary" type="submit">Continue</button>
+        <button class="choose-back" type="button" id="chooseBack">Use a different account</button>
       </form>
       <div id="authError" class="auth-error"></div>
       <div class="or"><span>or</span></div>
@@ -80,6 +98,7 @@
         <button type="button" data-email="associate@lexdraft.test" data-pw="associate123">Associate</button>
         <button type="button" data-email="client@lexdraft.test" data-pw="client123">Client</button>
       </div>
+      <a class="auth-pricing" href="/pricing">Free to start · Team and Firm plans for growing practices</a>
     </div>
   </section>
 
@@ -195,6 +214,7 @@
                 <div id="profileMenu" class="profile-menu hidden">
                   <div class="pm-name" id="pmName"></div>
                   <div class="pm-sub" id="pmSub"></div>
+                  <button id="pmPlan" class="pm-plan team-only" type="button"><span id="pmFirm"></span><b id="pmPlanName"></b></button>
                   <div class="pm-label">Theme</div>
                   <div class="themes">
                     <button class="theme-opt" data-theme="black" style="--a:#0c0c0c;--b:#fbfaf7"><i></i>Black</button>
@@ -399,6 +419,17 @@
     <div id="tpList" class="tp-list"></div>
   </aside>
 
+  <!-- Plans: Free, Team, Firm. Only the Team Head changes the plan. -->
+  <aside id="planPanel" class="team-panel plan-panel hidden" aria-label="Plans">
+    <header class="tp-head">
+      <div><div class="tp-kicker" id="plFirm">Your firm</div><h2>Plan</h2></div>
+      <button id="plClose" class="tp-close" title="Close (Esc)">✕</button>
+    </header>
+    <div id="plUsage" class="pl-usage"></div>
+    <div id="plList" class="pl-list"></div>
+    <p id="plMsg" class="tp-msg pl-msg"></p>
+  </aside>
+
   <!-- brief confirmation after important actions -->
   <div id="confirm" class="confirm" aria-live="polite"><span class="tick">✓</span><b id="confirmText"></b></div>
 
@@ -407,5 +438,6 @@
   <script src="/pages.js"></script>
   <script src="/share.js"></script>
   <script src="/team.js"></script>
+  <script src="/plans.js"></script>
 </body>
 </html>

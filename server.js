@@ -151,7 +151,32 @@ for (const sql of [
   'ALTER TABLE users ADD COLUMN perm_upload INTEGER NOT NULL DEFAULT 0',   // associate may upload to the clean draft
   'ALTER TABLE users ADD COLUMN perm_confirm INTEGER NOT NULL DEFAULT 0',  // associate may confirm/reject changes
   'ALTER TABLE users ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0',      // removed from the team
+  'ALTER TABLE users ADD COLUMN firm_id INTEGER',                          // the law firm a lawyer belongs to (clients: none)
+  'ALTER TABLE drafts ADD COLUMN firm_id INTEGER',                         // the firm that owns the matter
 ]) { try { db.exec(sql); } catch { /* already there */ } }
+// Each law firm is its own private workspace with its own Team Head, team, matters and plan.
+db.exec(`CREATE TABLE IF NOT EXISTS firms (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  plan TEXT NOT NULL DEFAULT 'free',
+  created_at INTEGER NOT NULL
+)`);
+
+// ---------- plans (freemium) ----------
+// seats = lawyers in the firm, Team Head included. Prices are per month.
+const PLANS = {
+  free: { id: 'free', name: 'Free', price: 0, seats: 2, matters: 5 },
+  team: { id: 'team', name: 'Team', price: 250, seats: 5, matters: null },
+  firm: { id: 'firm', name: 'Firm', price: 450, seats: 10, matters: null },
+};
+const CURRENCY = process.env.PLAN_CURRENCY || '$';
+const getFirm = (id) => (id ? db.prepare('SELECT * FROM firms WHERE id = ?').get(id) : null);
+const planOf = (firm) => PLANS[firm?.plan] || PLANS.free;
+const seatsUsed = (firmId) => db.prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'team' AND disabled = 0 AND firm_id = ?").get(firmId).n;
+const mattersUsed = (firmId) => db.prepare('SELECT COUNT(*) AS n FROM drafts WHERE firm_id = ?').get(firmId).n;
+function createFirm(name) {
+  return db.prepare('INSERT INTO firms (name, plan, created_at) VALUES (?,?,?)').run(String(name || 'My firm').trim().slice(0, 80) || 'My firm', 'free', Date.now()).lastInsertRowid;
+}
 // what a person may do: the Team Head can do everything; associates as the Team Head allows
 const canUploadClean = (u) => !!u?.head || (u?.role === 'team' && !!u.perm_upload);
 const canConfirm = (u) => !!u?.head || (u?.role === 'team' && !!u.perm_confirm);
@@ -169,6 +194,19 @@ function verifyPassword(pw, stored) {
 }
 const publicUser = (u) => u && ({ id: u.id, name: u.name, email: u.email, role: u.role, title: u.title, color: u.color, head: !!u.head,
   canUpload: canUploadClean(u), canConfirm: canConfirm(u) });
+// the signed-in person's own view of their firm and plan
+function firmInfo(u) {
+  if (u?.role !== 'team' || !u.firm_id) return null;
+  const f = getFirm(u.firm_id), p = planOf(f);
+  return { id: f.id, name: f.name, plan: p.id, seats: p.seats, seatsUsed: seatsUsed(f.id), matters: p.matters, mattersUsed: mattersUsed(f.id) };
+}
+const meUser = (u) => u && { ...publicUser(u), firm: firmInfo(u) };
+// a new law firm: its own workspace on the Free plan, with this person as Team Head
+function createHead(name, email, passHash, firmName) {
+  const fid = createFirm(firmName || `${String(name).trim()}'s firm`);
+  return db.prepare('INSERT INTO users (name, email, role, title, color, head, pass_hash, firm_id, created_at) VALUES (?,?,?,?,?,?,?,?,?)')
+    .run(String(name).trim().slice(0, 80), email, 'team', 'Team Head', PALETTE[0], 1, passHash, fid, Date.now()).lastInsertRowid;
+}
 const getUser = (id) => db.prepare('SELECT * FROM users WHERE id = ?').get(id);
 
 function nextColor() {
@@ -438,6 +476,8 @@ function hasAccess(user, draftId) {
 }
 function canSeeDraft(user, draft) {
   if (!draft || !user) return false;
+  // a lawyer never sees another firm's matters, even if someone shares one with them
+  if (user.role === 'team' && draft.firm_id !== user.firm_id) return false;
   return !!user.head || draft.created_by === user.id || draft.client_id === user.id || hasAccess(user, draft.id);
 }
 function grantAccess(draftId, email, byId) {
@@ -546,6 +586,13 @@ Tenant shall deposit an amount equal to six (6) months' rent as security.`;
   for (const lane of LANES) initLane(leaseId, lane, textToHtml(lease), counsel, 'Initial draft');
   logActivity(leaseId, 'final', 'opened the matter', counsel.id);
 }
+// Lawyers and matters from before firms existed (or from the seed above) become one firm.
+if (db.prepare("SELECT 1 FROM users WHERE role = 'team' AND firm_id IS NULL").get()) {
+  const fid = createFirm(process.env.FIRM_NAME || (DEMO ? 'Raman & Associates' : 'My firm'));
+  db.prepare("UPDATE users SET firm_id = ? WHERE role = 'team' AND firm_id IS NULL").run(fid);
+  db.prepare('UPDATE drafts SET firm_id = ? WHERE firm_id IS NULL').run(fid);
+  if (DEMO) db.prepare("UPDATE firms SET plan = 'team' WHERE id = ?").run(fid); // the demo firm shows a paid plan
+}
 
 // ---------- realtime (Server-Sent Events) ----------
 const streams = new Set(); // { res, user, draftId }
@@ -635,10 +682,11 @@ app.post('/api/auth/login', (req, res) => {
   const { email, password } = req.body || {};
   const user = db.prepare('SELECT * FROM users WHERE email = ?').get(String(email || '').toLowerCase().trim());
   if (user?.disabled) return res.status(401).json({ error: 'This account has been removed from the firm' });
+  if (user?.pass_hash?.startsWith('!')) return res.status(401).json({ error: 'This account signs in with Google — use the Google button' });
   if (user && !user.pass_hash) return res.status(401).json({ error: 'Your lawyer has set up this account — choose your password under "Set up account" to activate it' });
   if (!user || !verifyPassword(String(password || ''), user.pass_hash)) return res.status(401).json({ error: 'Invalid email or password' });
   startSession(res, user.id);
-  res.json({ user: publicUser(user) });
+  res.json({ user: meUser(user) });
 });
 app.post('/api/auth/register', (req, res) => {
   const { name, email, password, company } = req.body || {};
@@ -649,14 +697,17 @@ app.post('/api/auth/register', (req, res) => {
     // a client the firm added with a new matter: claim the account by setting a password
     db.prepare('UPDATE users SET pass_hash = ?, title = COALESCE(title, ?) WHERE id = ?').run(hashPassword(password), company || null, existing.id);
     startSession(res, existing.id);
-    return res.json({ user: publicUser(getUser(existing.id)) });
+    return res.json({ user: meUser(getUser(existing.id)) });
   }
   if (existing) return res.status(409).json({ error: 'An account with that email already exists' });
-  // Self-registration creates client accounts; the legal team is provisioned by the firm.
-  const id = db.prepare('INSERT INTO users (name, email, role, title, color, pass_hash, created_at) VALUES (?,?,?,?,?,?,?)')
-    .run(String(name).trim(), em, 'client', company || null, nextColor(), hashPassword(password), now()).lastInsertRowid;
+  // Self-registration: a client, or a new law firm (its founder becomes the Team Head, on the Free plan).
+  // Associates are added by their Team Head.
+  const id = req.body?.kind === 'firm'
+    ? createHead(name, em, hashPassword(password), req.body?.firmName)
+    : db.prepare('INSERT INTO users (name, email, role, title, color, pass_hash, created_at) VALUES (?,?,?,?,?,?,?)')
+      .run(String(name).trim(), em, 'client', company || null, nextColor(), hashPassword(password), now()).lastInsertRowid;
   startSession(res, id);
-  res.json({ user: publicUser(getUser(id)) });
+  res.json({ user: meUser(getUser(id)) });
 });
 app.post('/api/auth/logout', (req, res) => {
   const token = parseCookies(req).lex_session;
@@ -664,18 +715,24 @@ app.post('/api/auth/logout', (req, res) => {
   res.setHeader('Set-Cookie', `lex_session=; HttpOnly; Path=/; Max-Age=0${SECURE}`);
   res.json({ ok: true });
 });
-app.get('/api/me', auth, (req, res) => res.json({ user: publicUser(req.user) }));
+app.get('/api/me', auth, (req, res) => res.json({ user: meUser(req.user) }));
 app.get('/api/clients', auth, teamOnly, (req, res) => {
-  res.json({ clients: db.prepare("SELECT id, name, email, title, color, pass_hash != '' AS active FROM users WHERE role = 'client' ORDER BY name").all() });
+  // only this firm's clients: people on its matters, or shared into them
+  res.json({ clients: db.prepare(`SELECT id, name, email, title, color, pass_hash != '' AS active FROM users u WHERE role = 'client' AND (
+      id IN (SELECT client_id FROM drafts WHERE firm_id = ?)
+      OR email IN (SELECT a.email FROM matter_access a JOIN drafts d ON d.id = a.draft_id WHERE d.firm_id = ?)) ORDER BY name`).all(req.user.firm_id, req.user.firm_id) });
 });
 
 // --- drafts
 app.get('/api/drafts', auth, (req, res) => {
   const base = 'SELECT d.*, c.name AS client_name FROM drafts d LEFT JOIN users c ON c.id = d.client_id';
+  const own = 'd.created_by = ? OR d.client_id = ? OR EXISTS (SELECT 1 FROM matter_access a WHERE a.draft_id = d.id AND a.email = ?)';
+  const me = [req.user.id, req.user.id, String(req.user.email).toLowerCase()];
   const rows = req.user.head
-    ? db.prepare(`${base} ORDER BY d.updated_at DESC`).all()
-    : db.prepare(`${base} WHERE d.created_by = ? OR d.client_id = ? OR EXISTS (SELECT 1 FROM matter_access a WHERE a.draft_id = d.id AND a.email = ?) ORDER BY d.updated_at DESC`)
-      .all(req.user.id, req.user.id, String(req.user.email).toLowerCase());
+    ? db.prepare(`${base} WHERE d.firm_id = ? ORDER BY d.updated_at DESC`).all(req.user.firm_id)
+    : req.user.role === 'team'
+      ? db.prepare(`${base} WHERE d.firm_id = ? AND (${own}) ORDER BY d.updated_at DESC`).all(req.user.firm_id, ...me)
+      : db.prepare(`${base} WHERE ${own} ORDER BY d.updated_at DESC`).all(...me);
   res.json({ drafts: rows });
 });
 
@@ -684,6 +741,10 @@ app.get('/api/drafts', auth, (req, res) => {
 app.post('/api/drafts', auth, teamOnly, (req, res) => {
   const { title, clientId, newClient, counterparty, contentHtml, sourceName, page, matterDate } = req.body || {};
   if (!title || !String(title).trim()) return res.status(400).json({ error: 'Matter title is required' });
+  const plan = planOf(getFirm(req.user.firm_id));
+  if (plan.matters && mattersUsed(req.user.firm_id) >= plan.matters) {
+    return res.status(402).json({ error: `The ${plan.name} plan includes ${plan.matters} matters. Upgrade your plan to open more.`, upgrade: true });
+  }
   let cid = clientId ? Number(clientId) : null;
   if (cid && !db.prepare("SELECT 1 FROM users WHERE id = ? AND role = 'client'").get(cid)) return res.status(400).json({ error: 'Unknown client' });
   if (newClient?.name?.trim()) {
@@ -695,12 +756,12 @@ app.post('/api/drafts', auth, teamOnly, (req, res) => {
       .run(String(newClient.name).trim(), email, 'client', String(newClient.company || '').trim() || null, nextColor(), '', now()).lastInsertRowid;
   }
   const t = now();
-  const count = db.prepare('SELECT COUNT(*) AS n FROM drafts').get().n;
+  const count = mattersUsed(req.user.firm_id);
   const matterNo = `LD-${new Date().getFullYear()}-${String(140 + count + 1).padStart(4, '0')}`;
   const setup = cleanPage(page);
   const md = /^\d{4}-\d{2}-\d{2}$/.test(String(matterDate || '')) ? matterDate : null;
-  const id = db.prepare('INSERT INTO drafts (title, matter_no, client_id, counterparty, page_setup, matter_date, status, created_by, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)')
-    .run(String(title).trim(), matterNo, cid, String(counterparty || '').trim() || null, setup ? JSON.stringify(setup) : null, md, 'drafting', req.user.id, t, t).lastInsertRowid;
+  const id = db.prepare('INSERT INTO drafts (title, matter_no, client_id, counterparty, page_setup, matter_date, status, created_by, firm_id, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+    .run(String(title).trim(), matterNo, cid, String(counterparty || '').trim() || null, setup ? JSON.stringify(setup) : null, md, 'drafting', req.user.id, req.user.firm_id, t, t).lastInsertRowid;
   const imported = contentHtml && clean(contentHtml).replace(/<[^>]+>/g, '').trim() ? clean(contentHtml) : null;
   const cl = cid ? getUser(cid) : null;
   const tpl = TEMPLATES.some((x) => x.id === req.body?.template) ? req.body.template : 'blank';
@@ -764,7 +825,7 @@ app.get('/api/drafts/:id', auth, loadDraft, (req, res) => {
   const activity = db.prepare(`SELECT a.lane, a.action, a.created_at, u.name AS author FROM activity a LEFT JOIN users u ON u.id = a.author_id
                                WHERE a.draft_id = ? AND (a.lane IS NULL OR a.lane IN (${ph})) ORDER BY a.id DESC LIMIT 40`).all(d.id, ...visible);
   // people this viewer may know about: the firm's team plus this matter's client
-  const people = db.prepare("SELECT * FROM users WHERE role = 'team' OR id = ?").all(d.client_id ?? -1).map(publicUser);
+  const people = db.prepare("SELECT * FROM users WHERE (role = 'team' AND firm_id = ?) OR id = ?").all(d.firm_id ?? -1, d.client_id ?? -1).map(publicUser);
   const head = people.find((p) => p.head) || null;
   // open associate requests are internal to the firm
   const requests = req.user.role !== 'team' ? [] : db.prepare(`SELECT r.id, r.kind, r.content, r.created_at, r.requested_by, u.name AS requester, u.color AS requester_color
@@ -1139,7 +1200,7 @@ app.get('/api/drafts/:id/access', auth, teamOnly, loadDraft, (req, res) => {
     const u = userByEmail(r.email);
     return { email: r.email, name: u?.name || null, role: u?.role || 'client', active: !!u?.pass_hash, removable: true };
   });
-  const head = db.prepare('SELECT * FROM users WHERE head = 1').get();
+  const head = db.prepare('SELECT * FROM users WHERE head = 1 AND firm_id = ?').get(d.firm_id ?? -1);
   const creator = d.created_by ? getUser(d.created_by) : null;
   res.json({ people, always: [head, creator].filter(Boolean).filter((u, i, a) => a.findIndex((x) => x.id === u.id) === i).map(publicUser) });
 });
@@ -1221,17 +1282,17 @@ app.post('/api/join/:token', (req, res) => {
   const user = ensureClient(row.email, expected || name);
   grantAccess(row.draft_id, row.email, row.created_by);
   startSession(res, user.id);
-  res.json({ user: publicUser(user), draftId: row.draft_id });
+  res.json({ user: meUser(user), draftId: row.draft_id });
 });
 
 // ---------- the legal team: the Team Head invites lawyers ----------
 app.get('/api/team', auth, teamOnly, (req, res) => {
-  res.json({ team: db.prepare("SELECT id, name, email, title, color, head, perm_upload, perm_confirm, pass_hash != '' AS active FROM users WHERE role = 'team' AND disabled = 0 ORDER BY head DESC, name").all() });
+  res.json({ team: db.prepare("SELECT id, name, email, title, color, head, perm_upload, perm_confirm, pass_hash != '' AS active FROM users WHERE role = 'team' AND disabled = 0 AND firm_id = ? ORDER BY head DESC, name").all(req.user.firm_id) });
 });
 // the Team Head sets what an associate may do
 app.patch('/api/team/:uid', auth, headOnly, (req, res) => {
   const u = getUser(Number(req.params.uid));
-  if (!u || u.role !== 'team' || u.disabled) return res.status(404).json({ error: 'Team member not found' });
+  if (!u || u.role !== 'team' || u.disabled || u.firm_id !== req.user.firm_id) return res.status(404).json({ error: 'Team member not found' });
   if (u.head) return res.status(400).json({ error: 'The Team Head can already do everything' });
   const b = req.body || {};
   if ('perm_upload' in b) db.prepare('UPDATE users SET perm_upload = ? WHERE id = ?').run(b.perm_upload ? 1 : 0, u.id);
@@ -1241,7 +1302,7 @@ app.patch('/api/team/:uid', auth, headOnly, (req, res) => {
 // the Team Head removes someone from the team: they can no longer sign in (their past work stays in the history)
 app.delete('/api/team/:uid', auth, headOnly, (req, res) => {
   const u = getUser(Number(req.params.uid));
-  if (!u || u.role !== 'team' || u.disabled) return res.status(404).json({ error: 'Team member not found' });
+  if (!u || u.role !== 'team' || u.disabled || u.firm_id !== req.user.firm_id) return res.status(404).json({ error: 'Team member not found' });
   if (u.head || u.id === req.user.id) return res.status(400).json({ error: "The Team Head can't be removed" });
   db.prepare('UPDATE users SET disabled = 1, perm_upload = 0, perm_confirm = 0 WHERE id = ?').run(u.id);
   db.prepare('DELETE FROM sessions WHERE user_id = ?').run(u.id);
@@ -1253,10 +1314,18 @@ app.post('/api/team', auth, headOnly, (req, res) => {
   const email = String(req.body?.email || '').toLowerCase().trim();
   if (!name || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return res.status(400).json({ error: 'Enter their name and a valid email' });
   const existing = userByEmail(email);
-  if (existing?.role === 'team') return res.status(409).json({ error: 'They are already on the team' });
-  if (existing) return res.status(409).json({ error: 'That email belongs to a client account' });
-  db.prepare('INSERT INTO users (name, email, role, title, color, pass_hash, created_at) VALUES (?,?,?,?,?,?,?)')
-    .run(name, email, 'team', String(req.body?.title || 'Associate').slice(0, 60), nextColor(), '', now());
+  if (existing?.role === 'team' && !existing.disabled) return res.status(409).json({ error: existing.firm_id === req.user.firm_id ? 'They are already on the team' : 'That person already belongs to another firm on Tabellio' });
+  if (existing && existing.role !== 'team') return res.status(409).json({ error: 'That email belongs to a client account' });
+  const plan = planOf(getFirm(req.user.firm_id));
+  if (seatsUsed(req.user.firm_id) >= plan.seats) {
+    return res.status(402).json({ error: `The ${plan.name} plan is for up to ${plan.seats} lawyers. Upgrade your plan to add more.`, upgrade: true });
+  }
+  if (existing) { // someone removed earlier: bring them back into this firm
+    db.prepare('UPDATE users SET name = ?, disabled = 0, head = 0, firm_id = ? WHERE id = ?').run(name, req.user.firm_id, existing.id);
+  } else {
+    db.prepare('INSERT INTO users (name, email, role, title, color, pass_hash, firm_id, created_at) VALUES (?,?,?,?,?,?,?,?)')
+      .run(name, email, 'team', String(req.body?.title || 'Associate').slice(0, 60), nextColor(), '', req.user.firm_id, now());
+  }
   sendMail({
     to: email, subject: 'You have been added to Tabellio',
     heading: 'Welcome to the team', lines: [`Dear ${name},`, `${req.user.name} has added you to the firm's Tabellio workspace.`, 'Open the site, choose "Set up account", and use this email address to choose your password.'],
@@ -1277,12 +1346,78 @@ app.get('/api/auth/config', (req, res) => res.json({
   demo: DEMO,
   google: GOOGLE_CLIENT_ID, apple: APPLE_CLIENT_ID ? { clientId: APPLE_CLIENT_ID, redirectURI: APPLE_REDIRECT_URI } : null,
 }));
-// a verified email from Google/Apple signs in that person; someone new becomes a client who sees only what's shared with them
-function signInVerified(res, email, name) {
-  const user = ensureClient(email, name);
-  startSession(res, user.id);
-  res.json({ user: publicUser(user) });
+// A verified email from Google/Apple signs that person in. Someone new is first asked whether they are
+// a client or a law firm: they get a short-lived signed ticket that carries the verified email to that step.
+const SOCIAL = '!social'; // pass_hash for accounts that sign in only with Google/Apple
+const TICKET_KEY = SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+const ticketSig = (data) => crypto.createHmac('sha256', TICKET_KEY).update(`ticket:${data}`).digest('base64url');
+function makeTicket(email, name) {
+  const data = Buffer.from(JSON.stringify({ email: String(email).toLowerCase().trim(), name, exp: Date.now() + 15 * 60000 })).toString('base64url');
+  return `${data}.${ticketSig(data)}`;
 }
+function readTicket(ticket) {
+  const [data, sig] = String(ticket || '').split('.');
+  if (!data || !sig || sig.length !== ticketSig(data).length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(ticketSig(data)))) return null;
+  try { const t = JSON.parse(Buffer.from(data, 'base64url').toString()); return t.exp > Date.now() ? t : null; } catch { return null; }
+}
+function signInVerified(res, email, name) {
+  const user = userByEmail(email);
+  if (user?.disabled) return res.status(401).json({ error: 'This account has been removed from the firm' });
+  if (!user) return res.json({ choose: true, ticket: makeTicket(email, name), name, email: String(email).toLowerCase() });
+  startSession(res, user.id);
+  res.json({ user: meUser(user) });
+}
+app.post('/api/auth/social-finish', (req, res) => {
+  const t = readTicket(req.body?.ticket);
+  if (!t) return res.status(401).json({ error: 'That sign-in took too long — please sign in again' });
+  let user = userByEmail(t.email);
+  if (!user) {
+    const name = String(req.body?.name || t.name || t.email.split('@')[0]).trim().slice(0, 80);
+    if (req.body?.kind === 'firm') {
+      const firmName = String(req.body?.firmName || '').trim();
+      if (!firmName) return res.status(400).json({ error: "Enter your firm's name" });
+      user = getUser(createHead(name, t.email, SOCIAL, firmName));
+    } else {
+      user = ensureClient(t.email, name);
+      if (!user.pass_hash) db.prepare('UPDATE users SET pass_hash = ? WHERE id = ?').run(SOCIAL, user.id);
+    }
+  }
+  startSession(res, user.id);
+  res.json({ user: meUser(user) });
+});
+
+// ---------- plans: the Team Head moves the firm between Free, Team and Firm ----------
+// Online payment: set PAY_LINK_TEAM / PAY_LINK_FIRM to a Stripe or Razorpay payment link. The site owner
+// (OWNER_EMAIL) confirms a paid plan with POST /api/admin/firms/:id/plan. In the demo, upgrades apply at once.
+const PAY_LINKS = { team: process.env.PAY_LINK_TEAM || null, firm: process.env.PAY_LINK_FIRM || null };
+app.get('/api/plans', (req, res) => res.json({ plans: Object.values(PLANS), currency: CURRENCY, demo: DEMO }));
+app.post('/api/firm/plan', auth, headOnly, (req, res) => {
+  const target = PLANS[req.body?.plan];
+  if (!target) return res.status(400).json({ error: 'Unknown plan' });
+  const firm = getFirm(req.user.firm_id), current = planOf(firm);
+  if (target.id === current.id) return res.json({ user: meUser(req.user) });
+  if (seatsUsed(firm.id) > target.seats) return res.status(400).json({ error: `Your firm has ${seatsUsed(firm.id)} lawyers; the ${target.name} plan is for up to ${target.seats}. Remove someone first.` });
+  if (target.matters && mattersUsed(firm.id) > target.matters) return res.status(400).json({ error: `Your firm has ${mattersUsed(firm.id)} matters; the ${target.name} plan includes ${target.matters}.` });
+  if (target.price > current.price && !DEMO) {
+    if (PAY_LINKS[target.id]) return res.json({ payUrl: PAY_LINKS[target.id] });
+    return res.status(501).json({ error: 'Online payment isn’t switched on yet — contact Tabellio to upgrade.' });
+  }
+  db.prepare('UPDATE firms SET plan = ? WHERE id = ?').run(target.id, firm.id); // downgrades (and demo upgrades) apply at once
+  res.json({ user: meUser(req.user) });
+});
+app.patch('/api/firm', auth, headOnly, (req, res) => {
+  const name = String(req.body?.name || '').trim().slice(0, 80);
+  if (!name) return res.status(400).json({ error: "Enter the firm's name" });
+  db.prepare('UPDATE firms SET name = ? WHERE id = ?').run(name, req.user.firm_id);
+  res.json({ user: meUser(req.user) });
+});
+app.post('/api/admin/firms/:id/plan', auth, (req, res) => {
+  const owner = String(process.env.OWNER_EMAIL || '').toLowerCase().trim();
+  if (!owner || req.user.email !== owner) return res.status(404).json({ error: 'Not found' });
+  if (!PLANS[req.body?.plan] || !getFirm(Number(req.params.id))) return res.status(400).json({ error: 'Unknown firm or plan' });
+  db.prepare('UPDATE firms SET plan = ? WHERE id = ?').run(req.body.plan, Number(req.params.id));
+  res.json({ ok: true });
+});
 app.post('/api/auth/google', async (req, res) => {
   if (!googleClient) return res.status(501).json({ error: 'Google sign-in has not been set up for this site yet' });
   try {
@@ -1320,6 +1455,7 @@ app.get('/api/events', auth, (req, res) => {
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 app.get('/privacy', (req, res) => res.sendFile(path.join(__dirname, 'public', 'legal', 'privacy.html')));
 app.get('/terms', (req, res) => res.sendFile(path.join(__dirname, 'public', 'legal', 'terms.html')));
+app.get('/pricing', (req, res) => res.sendFile(path.join(__dirname, 'public', 'legal', 'pricing.html')));
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 // Run as a normal server locally (`npm start`); on Vercel the app is imported by api/index.js instead.

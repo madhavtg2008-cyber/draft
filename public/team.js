@@ -15,6 +15,8 @@ async function loadTeam() {
 function renderTeam() {
   const head = isHead();
   $('#tpAdd').classList.toggle('hidden', !head);
+  const firm = state.me.firm;
+  teamPanel.querySelector('.tp-kicker').textContent = firm ? `${firm.name} · ${teamList.length} of ${firm.seats} lawyers` : 'Your firm';
   const toggle = (u, key, label, hint) => `
     <label class="tp-perm" title="${hint}">
       <input type="checkbox" data-perm="${key}" data-uid="${u.id}" ${u[key] ? 'checked' : ''} ${head ? '' : 'disabled'} />

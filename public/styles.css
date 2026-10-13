@@ -779,3 +779,40 @@ body.role-client .mdate { cursor: default; border-style: solid; }
 .tp-remove { margin: 12px 0 0 42px; font-size: 12px; color: var(--graphite); text-decoration: underline; text-underline-offset: 2px; }
 .tp-remove:hover, .tp-remove.armed { color: #b3261e; }
 .caption-right { align-self: flex-start; margin-top: -6px; } /* profile and Share matter sit up at the top right */
+
+/* ---------- client / law firm choice ---------- */
+.kind { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); margin-bottom: 4px; }
+.kind label { position: relative; cursor: pointer; }
+.kind input { position: absolute; opacity: 0; pointer-events: none; }
+.kind span { display: block; padding: 11px 6px; text-align: center; font-size: 12px; letter-spacing: .08em; color: var(--mute); transition: background .2s, color .2s; }
+.kind label + label span { border-left: 1px solid var(--line); }
+.kind input:checked + span { background: var(--chalk); color: var(--night); }
+.kind input:focus-visible + span { outline: 1px solid var(--chalk); outline-offset: 2px; }
+.choose-hi { margin: 0 0 10px; text-align: center; font: 17px var(--body); color: var(--mute); }
+.choose-hi b { color: var(--chalk); font-weight: 500; }
+.kind-note { margin: 4px 0 0; text-align: center; font: italic 14px var(--body); color: var(--mute); }
+.choose-back { margin-top: 4px; font-size: 12px; color: var(--mute); text-decoration: underline; text-underline-offset: 3px; }
+.auth-pricing { display: block; margin-top: 22px; text-align: center; font-size: 11.5px; letter-spacing: .06em; color: var(--mute); text-decoration: none; }
+.auth-pricing:hover { color: var(--chalk); }
+
+/* ---------- plan: profile-menu entry and the panel ---------- */
+.pm-plan { display: flex; justify-content: space-between; align-items: center; gap: 10px; width: 100%; margin-top: 14px; padding: 9px 10px; border: 1px solid var(--rule); font-size: 12px; color: var(--graphite); text-align: left; }
+.pm-plan b { color: var(--ink); font-weight: 600; white-space: nowrap; }
+.pm-plan:hover { border-color: var(--ink); }
+.plan-panel { overflow-y: auto; }
+.pl-usage { display: flex; gap: 22px; padding: 14px 22px; border-bottom: 1px solid var(--rule); font-size: 13px; color: var(--graphite); }
+.pl-usage b { color: var(--ink); font: 600 18px var(--serif); margin-right: 2px; }
+.pl-list { display: grid; gap: 12px; padding: 18px 22px; }
+.pl-card { border: 1px solid var(--rule); padding: 16px 16px 14px; transition: border-color .2s; }
+.pl-card.on { border-color: var(--ink); }
+.pl-top { display: flex; justify-content: space-between; align-items: center; }
+.pl-name { font: 600 20px var(--serif); }
+.pl-tag { font: 600 9.5px var(--sans); letter-spacing: .18em; text-transform: uppercase; padding: 4px 7px; background: var(--ink); color: var(--paper); }
+.pl-price { margin-top: 4px; font: 600 26px var(--serif); }
+.pl-price small { font: 400 12px var(--sans); color: var(--graphite); }
+.pl-points { margin: 10px 0 0; padding: 0; list-style: none; font-size: 13px; color: var(--graphite); display: grid; gap: 4px; }
+.pl-points li::before { content: '§ '; color: var(--pencil); }
+.pl-go { margin-top: 14px; width: 100%; padding: 10px; background: var(--ink); color: var(--paper); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; }
+.pl-go:hover { opacity: .88; }
+.pl-go:disabled { opacity: .5; }
+.pl-msg { padding: 0 22px 22px; }

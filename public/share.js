@@ -45,7 +45,9 @@ const loadScript = (src) => new Promise((resolve, reject) => {
 });
 async function socialSignedIn(url, body) {
   try {
-    state.me = (await api('POST', url, body)).user;
+    const r = await api('POST', url, body);
+    if (r.choose) return startChoose(r); // new here: client or law firm? (plans.js)
+    state.me = r.user;
     clearTimeout(typeTimer);
     await showApp();
   } catch (err) { $('#authError').textContent = err.message; }
@@ -221,6 +223,10 @@ function fillProfile() {
   $('#profileBtn').style.setProperty('--c', me.color);
   $('#pmName').textContent = me.name;
   $('#pmSub').textContent = `${me.email} · ${me.role === 'team' ? (me.title || 'Legal team') : 'Client'}`;
+  if (me.firm) {
+    $('#pmFirm').textContent = me.firm.name;
+    $('#pmPlanName').textContent = `${me.firm.plan[0].toUpperCase()}${me.firm.plan.slice(1)} plan →`;
+  }
 }
 new MutationObserver(fillProfile).observe($('#app'), { attributes: true, attributeFilter: ['class'] });
 $('#profileBtn').addEventListener('click', (e) => {
