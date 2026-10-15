@@ -148,6 +148,7 @@ function finish() {
   steps[at]?.after?.();
   tour.classList.add('hidden');
   at = -1;
+  if (state.me?.demo) try { sessionStorage.setItem('zoit_demo_tour', '1'); } catch { /* private mode */ }
   if (state.me) { state.me.tourDone = true; api('POST', '/api/me/tour', { done: true }).catch(() => {}); }
 }
 $('.tour-next', tour).addEventListener('click', () => (steps[at]?.done ? finish() : show(at + 1, 1)));
@@ -163,6 +164,9 @@ addEventListener('resize', () => { if (at >= 0) place(steps[at].el && visible(st
 
 // first sign-in only: start once the app has drawn its matters
 new MutationObserver(() => {
+  let seenDemo = false;
+  try { seenDemo = !!sessionStorage.getItem('zoit_demo_tour'); } catch { /* private mode */ }
+  if (state.me?.demo && seenDemo) return; // a demo visitor sees it once per visit
   if ($('#app').classList.contains('hidden') || !state.me || state.me.tourDone || at >= 0) return;
   setTimeout(() => { if (state.me && !state.me.tourDone && at < 0 && !$('#app').classList.contains('hidden')) startTour(); }, 1100);
 }).observe($('#app'), { attributes: true, attributeFilter: ['class'] });

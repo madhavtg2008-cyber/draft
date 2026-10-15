@@ -169,6 +169,8 @@ db.exec(`CREATE TABLE IF NOT EXISTS firms (
   plan TEXT NOT NULL DEFAULT 'free',
   created_at INTEGER NOT NULL
 )`);
+try { db.exec('ALTER TABLE firms ADD COLUMN demo INTEGER NOT NULL DEFAULT 0'); } catch { /* already there */ }
+const isDemoFirm = (fid) => !!(fid && db.prepare('SELECT demo FROM firms WHERE id = ?').get(fid)?.demo);
 
 // ---------- plans (freemium) ----------
 // seats = lawyers in the firm, Team Head included. Prices are per month.
@@ -208,7 +210,9 @@ function firmInfo(u) {
   const f = getFirm(u.firm_id), p = planOf(f);
   return { id: f.id, name: f.name, plan: p.id, seats: p.seats, seatsUsed: seatsUsed(f.id), matters: p.matters, mattersUsed: mattersUsed(f.id) };
 }
-const meUser = (u) => u && { ...publicUser(u), firm: firmInfo(u), tourDone: !!u.tour_done };
+// the shared demo logins: every visitor gets the tour (the browser remembers it per visit)
+const isDemoAccount = (u) => /@lexdraft.test$/i.test(u?.email || '');
+const meUser = (u) => u && { ...publicUser(u), firm: firmInfo(u), demo: isDemoAccount(u), tourDone: isDemoAccount(u) ? false : !!u.tour_done };
 // a new law firm: its own workspace on the Free plan, with this person as Team Head
 function createHead(name, email, passHash, firmName) {
   const fid = createFirm(firmName || `${String(name).trim()}'s firm`);
@@ -570,7 +574,11 @@ if (!DEMO && db.prepare('SELECT COUNT(*) AS n FROM users').get().n === 0) {
     console.warn('No accounts yet: set HEAD_EMAIL and HEAD_PASSWORD (8+ characters) to create the Team Head.');
   }
 }
-if (DEMO && db.prepare('SELECT COUNT(*) AS n FROM users').get().n === 0) {
+// The Team Head / Associate / Client demo logins: a separate demo firm anyone can try, created once.
+// On by default (also on the live site); set DEMO_LOGINS=false to remove the buttons.
+const DEMO_LOGINS = process.env.DEMO_LOGINS ? process.env.DEMO_LOGINS === 'true' : true;
+try { // two servers starting at once may race to create them; the loser just skips
+if ((DEMO || DEMO_LOGINS) && !db.prepare('SELECT 1 FROM users WHERE email = ?').get('counsel@lexdraft.test')) {
   const addUser = db.prepare('INSERT INTO users (name, email, role, title, color, head, pass_hash, created_at) VALUES (?,?,?,?,?,?,?,?)');
   const mk = (...a) => getUser(addUser.run(...a).lastInsertRowid);
   const counsel = mk('Priya Raman', 'counsel@lexdraft.test', 'team', 'Team Head', PALETTE[0], 1, hashPassword('counsel123'), now());
@@ -637,13 +645,18 @@ Tenant shall deposit an amount equal to six (6) months' rent as security.`;
     .run('Commercial Lease — Harbour Tower', 'LD-2026-0157', client.id, 'drafting', counsel.id, t2, t2).lastInsertRowid;
   for (const lane of LANES) initLane(leaseId, lane, textToHtml(lease), counsel, 'Initial draft');
   logActivity(leaseId, 'final', 'opened the matter', counsel.id);
+  // the demo accounts are their own firm, walled off from every real one
+  const fid = createFirm('Raman & Associates (demo)');
+  db.prepare("UPDATE firms SET plan = 'team', demo = 1 WHERE id = ?").run(fid);
+  db.prepare('UPDATE users SET firm_id = ? WHERE id IN (?, ?)').run(fid, counsel.id, associate.id);
+  db.prepare('UPDATE drafts SET firm_id = ? WHERE id IN (?, ?)').run(fid, draftId, leaseId);
 }
+} catch (err) { console.warn('demo accounts:', err.message); }
 // Lawyers and matters from before firms existed (or from the seed above) become one firm.
 if (db.prepare("SELECT 1 FROM users WHERE role = 'team' AND firm_id IS NULL").get()) {
-  const fid = createFirm(process.env.FIRM_NAME || (DEMO ? 'Raman & Associates' : 'My firm'));
+  const fid = createFirm(process.env.FIRM_NAME || 'My firm');
   db.prepare("UPDATE users SET firm_id = ? WHERE role = 'team' AND firm_id IS NULL").run(fid);
   db.prepare('UPDATE drafts SET firm_id = ? WHERE firm_id IS NULL').run(fid);
-  if (DEMO) db.prepare("UPDATE firms SET plan = 'team' WHERE id = ?").run(fid); // the demo firm shows a paid plan
 }
 
 // ---------- realtime (Server-Sent Events) ----------
@@ -808,6 +821,7 @@ app.post('/api/drafts', auth, teamOnly, (req, res) => {
   }
   let cid = clientId ? Number(clientId) : null;
   if (cid && !db.prepare("SELECT 1 FROM users WHERE id = ? AND role = 'client'").get(cid)) return res.status(400).json({ error: 'Unknown client' });
+  if (newClient?.name?.trim() && isDemoFirm(req.user.firm_id)) return res.status(403).json({ error: 'This is the shared demo firm — sign up your own firm (free) to invite real people.' });
   if (newClient?.name?.trim()) {
     const email = String(newClient.email || '').toLowerCase().trim();
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return res.status(400).json({ error: 'A valid email is needed for the new client' });
@@ -992,6 +1006,7 @@ function matterClients(draftId) {
 }
 function notifyCleanDraft(draftId, head, origin) {
   const d = db.prepare('SELECT * FROM drafts WHERE id = ?').get(draftId);
+  if (isDemoFirm(d?.firm_id)) return; // the public demo firm never sends real email
   for (const c of matterClients(draftId)) {
     const link = makeShareLink(draftId, c.email, head.id, origin);
     sendMail({
@@ -1267,6 +1282,7 @@ app.get('/api/drafts/:id/access', auth, teamOnly, loadDraft, (req, res) => {
 
 // share with someone by email: they get access and a personal link (emailed to them)
 app.post('/api/drafts/:id/share', auth, teamOnly, loadDraft, async (req, res) => {
+  if (isDemoFirm(req.draft.firm_id)) return res.status(403).json({ error: 'This is the shared demo firm — sign up your own firm (free) to invite real people.' });
   const email = String(req.body?.email || '').toLowerCase().trim();
   const name = String(req.body?.name || '').trim().slice(0, 80);
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return res.status(400).json({ error: 'Enter a valid email address' });
@@ -1285,7 +1301,7 @@ app.post('/api/drafts/:id/share', auth, teamOnly, loadDraft, async (req, res) =>
     broadcast(d.id, 'draft', { by: req.user.name, kind: 'share' });
     return res.json({ link, emailed: false, copied: true });
   }
-  const mail = await sendMail({
+  const mail = isDemoFirm(d.firm_id) ? { ok: false, demo: true } : await sendMail({ // no real email from the demo firm
     to: email,
     subject: `${req.user.name} shared "${d.title}" with you`,
     heading: 'A matter has been shared with you',
@@ -1370,6 +1386,7 @@ app.delete('/api/team/:uid', auth, headOnly, (req, res) => {
   res.json({ ok: true });
 });
 app.post('/api/team', auth, headOnly, (req, res) => {
+  if (isDemoFirm(req.user.firm_id)) return res.status(403).json({ error: 'This is the shared demo firm — sign up your own firm (free) to invite real people.' });
   const name = String(req.body?.name || '').trim().slice(0, 80);
   const email = String(req.body?.email || '').toLowerCase().trim();
   if (!name || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return res.status(400).json({ error: 'Enter their name and a valid email' });
@@ -1386,7 +1403,7 @@ app.post('/api/team', auth, headOnly, (req, res) => {
     db.prepare('INSERT INTO users (name, email, role, title, color, pass_hash, firm_id, created_at) VALUES (?,?,?,?,?,?,?,?)')
       .run(name, email, 'team', String(req.body?.title || 'Associate').slice(0, 60), nextColor(), '', req.user.firm_id, now());
   }
-  sendMail({
+  if (!isDemoFirm(req.user.firm_id)) sendMail({ // the public demo firm never sends real email
     to: email, subject: 'You have been added to Zoit',
     heading: 'Welcome to the team', lines: [`Dear ${name},`, `${req.user.name} has added you to the firm's Zoit workspace.`, 'Open Zoit and sign in with Google using this email address — or choose "Set up account" and pick a password.'],
     button: 'Set up my account', url: originOf(req),
@@ -1403,7 +1420,7 @@ const APPLE_REDIRECT_URI = process.env.APPLE_REDIRECT_URI || null;
 const googleClient = GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : null;
 const appleKeys = jose.createRemoteJWKSet(new URL('https://appleid.apple.com/auth/keys'));
 app.get('/api/auth/config', (req, res) => res.json({
-  demo: DEMO,
+  demo: DEMO || DEMO_LOGINS,
   google: GOOGLE_CLIENT_ID, apple: APPLE_CLIENT_ID ? { clientId: APPLE_CLIENT_ID, redirectURI: APPLE_REDIRECT_URI } : null,
 }));
 // A verified email from Google/Apple signs that person in. Someone new is first asked whether they are
