@@ -8,6 +8,9 @@ let docEditing = null; // 'new' | 'folder' | a document id | null
 let newDocFolder = ''; // a document made while a folder is open goes into that folder
 let openFolder = null; // the folder being looked into, like double-clicking a folder on a computer
 let openFolderMatter = null;
+let selected = null; // the tile picked with one click (double-click opens it)
+let exCollapsed = false;
+try { exCollapsed = localStorage.getItem('zoit_docs_collapsed') === '1'; } catch { /* private mode */ }
 
 // a manila folder and a page with a folded corner, like on any computer
 const ICON_FOLDER = '<svg class="ex-ico" viewBox="0 0 48 40" aria-hidden="true"><path d="M3 7a3 3 0 0 1 3-3h12.5l4 4.5H42a3 3 0 0 1 3 3V34a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3z" fill="#d9952b"/><path d="M3 14h42v20a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3z" fill="#f4bf4f"/><path d="M3 14h42v3H3z" fill="#f8d27a"/></svg>';
@@ -47,15 +50,20 @@ function renderDocStrip() {
   docStrip.innerHTML = `
     <div class="ex-head">
       <div class="ex-path">
+        <button type="button" class="ex-toggle" data-collapse title="${exCollapsed ? 'Show' : 'Hide'} documents" aria-expanded="${!exCollapsed}">▾</button>
         <button type="button" class="ex-crumb${openFolder ? '' : ' here'}" data-up>Documents</button>
         ${openFolder ? `<span class="ex-sep">›</span><span class="ex-crumb here">${ICON_FOLDER}${esc(openFolder)}</span>` : ''}
       </div>
-      ${team ? `<div class="ex-actions">
+      ${exCollapsed ? `<span class="ex-count">${docs.length} document${docs.length === 1 ? '' : 's'}${folders.length ? ` · ${folders.length} folder${folders.length === 1 ? '' : 's'}` : ''}</span>` : ''}
+      ${team && !exCollapsed ? `<div class="ex-actions">
         <button type="button" class="ex-act" data-new-doc>${ICON_DOC}New document</button>
         ${openFolder ? '' : `<button type="button" class="ex-act" data-new-folder>${ICON_FOLDER}New folder</button>`}
       </div>` : ''}
     </div>
-    <div class="ex-tiles">${tiles || '<p class="ex-empty">This folder is empty — add a document to it.</p>'}</div>`;
+    ${exCollapsed ? '' : `<div class="ex-tiles">${tiles || '<p class="ex-empty">This folder is empty — add a document to it.</p>'}</div>
+    <p class="ex-hint">Double-click to open${openFolder ? ' · Esc to go back' : ''}</p>`}`;
+  docStrip.classList.toggle('collapsed', exCollapsed);
+  if (selected) $(`[data-doc="${selected}"], [data-folder="${CSS.escape(String(selected))}"]`, docStrip)?.classList.add('sel');
   $('#folderList').innerHTML = folders.map((f) => `<option value="${esc(f)}">`).join('');
 }
 
@@ -71,14 +79,36 @@ docStrip.addEventListener('click', async (e) => {
   }
   if (e.target.closest('[data-new-doc]')) { newDocFolder = openFolder || ''; return openDocEdit('new'); }
   if (e.target.closest('[data-new-folder]')) return openDocEdit('folder');
-  if (e.target.closest('[data-up]')) { openFolder = null; closeDocEdit(); return renderDocStrip(); }
-  const folder = e.target.closest('[data-folder]');
-  if (folder) { openFolder = folder.dataset.folder; closeDocEdit(); return renderDocStrip(); } // open it
-  const b = e.target.closest('[data-doc]');
-  if (!b || Number(b.dataset.doc) === state.cur.draft.id) return;
-  closeDocEdit();
-  await openMatter(Number(b.dataset.doc)); // each document opens onto its own three sheets
+  if (e.target.closest('[data-collapse]')) {
+    exCollapsed = !exCollapsed;
+    try { localStorage.setItem('zoit_docs_collapsed', exCollapsed ? '1' : '0'); } catch { /* private mode */ }
+    closeDocEdit();
+    return renderDocStrip();
+  }
+  if (e.target.closest('[data-up]')) return goUp();
+  // one click picks a folder or document, like on a computer; a double-click opens it
+  const tile = e.target.closest('[data-folder], [data-doc]');
+  if (!tile) return;
+  $$('.ex-tile.sel', docStrip).forEach((t) => t.classList.remove('sel'));
+  tile.classList.add('sel');
+  selected = tile.dataset.doc ? Number(tile.dataset.doc) : tile.dataset.folder;
 });
+docStrip.addEventListener('dblclick', (e) => {
+  const tile = e.target.closest('[data-folder], [data-doc]');
+  if (tile && !e.target.closest('.ex-more')) openTile(tile);
+});
+docStrip.addEventListener('keydown', (e) => { // Enter opens the picked tile too
+  const tile = e.target.closest('[data-folder], [data-doc]');
+  if (tile && e.key === 'Enter') { e.preventDefault(); openTile(tile); }
+});
+async function openTile(tile) {
+  selected = null;
+  closeDocEdit();
+  if (tile.dataset.folder) { openFolder = tile.dataset.folder; return renderDocStrip(); }
+  const id = Number(tile.dataset.doc);
+  if (id !== state.cur.draft.id) await openMatter(id); // each document opens onto its own three sheets
+}
+function goUp() { openFolder = null; selected = null; closeDocEdit(); renderDocStrip(); }
 
 // the small inline form under the row: a new document, or rename / move / delete one
 function openDocEdit(which) {
@@ -153,4 +183,9 @@ docEdit.addEventListener('click', async (e) => {
     confirmDone(`Deleted “${name || 'document'}”`);
   } catch (x) { $('.de-error', docEdit).textContent = x.message; }
 });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && docEditing) { e.preventDefault(); closeDocEdit(); } });
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  if (docEditing) { e.preventDefault(); return closeDocEdit(); }
+  const busy = state.lane || document.querySelector('.share-panel:not(.hidden), .profile-menu:not(.hidden), #teamPanel:not(.hidden), #planPanel:not(.hidden), .tour:not(.hidden), .edit-panel:not(.hidden), #newForm:not(.hidden), #docForm:not(.hidden)');
+  if (openFolder && !busy && !docStrip.classList.contains('hidden')) { e.preventDefault(); goUp(); }
+});
