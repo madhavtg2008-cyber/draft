@@ -462,6 +462,65 @@ function resolveHunks(stream, hunk, accept) {
 }
 const workingText = (stream) => stream.filter((t) => !t.d).map((t) => t.t).join('');
 
+// When a client's change is confirmed, carry it into the other sheets too. Each change is
+// described as "this exact passage → that passage" (with enough surrounding words to find it
+// once), and replaced in the other sheet only where that passage still reads the same — so
+// anything the team wrote separately is left alone.
+function acceptedEdits(stream, target) {
+  const { ids, count } = hunkIds(stream);
+  const order = target === 'all' ? [...Array(count).keys()] : [target];
+  const done = new Set();
+  const textWith = (acceptedSet) => stream.map((tok, i) => {
+    if (ids[i] < 0) return tok.t; // already-confirmed text
+    const on = acceptedSet.has(ids[i]);
+    if (tok.d) return on ? '' : tok.t; // a deletion: gone once accepted, otherwise still there
+    return on ? tok.t : ''; // an insertion: only there once accepted
+  }).join('');
+  const edits = [];
+  for (const h of order) {
+    const before = textWith(done);
+    done.add(h);
+    const after = textWith(done);
+    let p = 0;
+    while (p < before.length && p < after.length && before[p] === after[p]) p++;
+    let q = 0;
+    while (q < before.length - p && q < after.length - p && before[before.length - 1 - q] === after[after.length - 1 - q]) q++;
+    edits.push({ before, after, p, oldEnd: before.length - q, newEnd: after.length - q });
+  }
+  return edits;
+}
+// replace one edit inside another sheet's text; null if the passage isn't there (unchanged) any more
+function placeEdit(text, e) {
+  for (const ctx of [24, 48, 96, 200, 400]) {
+    const a = Math.max(0, e.p - ctx), b = Math.min(e.before.length, e.oldEnd + ctx);
+    const find = e.before.slice(a, b);
+    const at = text.indexOf(find);
+    if (at < 0) return null;
+    if (text.indexOf(find, at + 1) >= 0 && (a > 0 || b < e.before.length)) continue; // not unique yet: widen
+    const replace = find.slice(0, e.p - a) + e.after.slice(e.p, e.newEnd) + find.slice(e.oldEnd - a);
+    return text.slice(0, at) + replace + text.slice(at + find.length);
+  }
+  return null;
+}
+function carryClientChanges(draftId, stream, target, user) {
+  const edits = acceptedEdits(stream, target);
+  const result = {};
+  for (const lane of ['team', 'final']) {
+    let text = workingText(getState(draftId, lane).stream);
+    let placed = 0;
+    for (const e of edits) {
+      const next = placeEdit(text, e);
+      if (next !== null) { text = next; placed++; }
+    }
+    if (placed) {
+      saveLane(draftId, lane, text, user, `Client changes confirmed by ${user.name}`, true);
+      laneChanged(draftId, lane, user, 'promote');
+    }
+    result[lane] = { placed, total: edits.length };
+  }
+  return result;
+}
+
 function getState(draftId, lane) {
   const row = db.prepare('SELECT tokens, rev FROM lane_state WHERE draft_id = ? AND lane = ?').get(draftId, lane);
   return row ? { stream: JSON.parse(row.tokens), rev: row.rev } : { stream: [], rev: 0 };
@@ -984,6 +1043,8 @@ app.post('/api/drafts/:id/lanes/:lane/changes', auth, confirmerOnly, loadDraft, 
   const { ids } = hunkIds(stream);
   const authors = [...new Set(stream.filter((_, i) => (target === 'all' ? ids[i] >= 0 : ids[i] === target)).map((t) => t.a || t.d))];
   if (!authors.length) return res.status(404).json({ error: 'No such change' });
+  // a confirmed client change also goes into the team and clean drafts
+  const carried = action === 'accept' && lane === 'client' ? carryClientChanges(req.draft.id, stream, target, req.user) : null;
   const next = resolveHunks(stream, target, action === 'accept');
   putState(req.draft.id, lane, next);
   const names = authors.map((id) => getUser(id)?.name).filter(Boolean).join(', ');
@@ -992,7 +1053,7 @@ app.post('/api/drafts/:id/lanes/:lane/changes', auth, confirmerOnly, loadDraft, 
   else db.prepare('UPDATE drafts SET updated_at = ? WHERE id = ?').run(now(), req.draft.id);
   logActivity(req.draft.id, lane, `${action === 'accept' ? 'confirmed' : 'rejected'} ${what} by ${names}`, req.user.id);
   laneChanged(req.draft.id, lane, req.user, action);
-  res.json({ lane: laneInfo(req.user, req.draft, lane) });
+  res.json({ lane: laneInfo(req.user, req.draft, lane), carried });
 });
 
 // Upload the team draft to the clean draft. Only ever runs as the Team Head.

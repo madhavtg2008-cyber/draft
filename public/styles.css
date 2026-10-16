@@ -597,6 +597,20 @@ body:has(#toolbar.off) #fmtToggle { display: none; }
 :root[data-theme="white"] .card-seal span { box-shadow: 0 0 0 7px var(--ink), 0 0 0 8px #f2f0eb; background: #f2f0eb; color: var(--ink); }
 :root[data-theme="white"] .live i { box-shadow: none; }
 :root[data-theme="navy"] .card-team .card-sub { color: #9aa6bd; }
+/* Oxblood: deep wine leather with brass */
+:root[data-theme="oxblood"] {
+  --night: #22090f; --night-2: #2d0e16; --night-3: #3b141e; --line: #57212e; --chalk: #f5e9dc; --mute: #c49a8f;
+  --ui-raise: #35111a; --ui-border: #6a2a38; --ui-dim: #9b6f6b; --ui-soft: #e5cdb8;
+  --paper: #fdf8f0; --paper-2: #f5ecdf; --ink: #2b0d14;
+}
+:root[data-theme="oxblood"] .card-team .card-sub { color: #c9a46b; }
+/* Emerald: library green with gilt */
+:root[data-theme="emerald"] {
+  --night: #08201a; --night-2: #0c2a22; --night-3: #12372c; --line: #1f4d3e; --chalk: #f3ecd9; --mute: #9dbcab;
+  --ui-raise: #0f3127; --ui-border: #2a5e4c; --ui-dim: #6f9283; --ui-soft: #d3e2d4;
+  --paper: #fbf8ef; --paper-2: #f1ecdd; --ink: #0b2a20;
+}
+:root[data-theme="emerald"] .card-team .card-sub { color: #d8b878; }
 
 /* profile button & menu */
 .profile { position: relative; }
@@ -606,11 +620,15 @@ body:has(#toolbar.off) #fmtToggle { display: none; }
 .pm-name { font: 600 19px var(--serif); }
 .pm-sub { margin-top: 2px; font-size: 11.5px; color: var(--graphite); }
 .pm-label { margin: 16px 0 8px; font: 600 10px var(--sans); letter-spacing: .2em; text-transform: uppercase; color: var(--pencil); }
-.themes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.theme-opt { display: grid; gap: 6px; justify-items: center; padding: 8px 4px; border: 1px solid var(--rule); font-size: 11.5px; color: var(--ink); transition: border-color .2s; }
+.themes { display: grid; gap: 6px; }
+.theme-opt { display: grid; grid-template-columns: 44px 1fr; grid-template-rows: auto auto; column-gap: 12px; align-items: center; padding: 8px 10px; border: 1px solid var(--rule); text-align: left; color: var(--ink); transition: border-color .2s; }
+.theme-opt span { font: 600 15px var(--serif); align-self: end; }
+.theme-opt small { grid-column: 2; font-size: 11px; color: var(--graphite); align-self: start; }
 .theme-opt:hover { border-color: var(--graphite); }
 .theme-opt.on { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
-.theme-opt i { width: 40px; height: 26px; border: 1px solid rgba(0,0,0,.15); background: linear-gradient(135deg, var(--a) 0 55%, var(--b) 55%); }
+.theme-opt i { grid-row: 1 / span 2; width: 44px; height: 30px; border: 1px solid rgba(0,0,0,.15); background: linear-gradient(135deg, var(--a) 0 55%, var(--b) 55%); }
+.theme-opt.on::after { content: '✓'; position: absolute; right: 12px; font-size: 13px; }
+.theme-opt { position: relative; }
 .pm-out { margin-top: 16px; width: 100%; padding: 9px; border: 1px solid var(--rule); font-size: 12px; color: var(--ink); }
 .pm-out:hover { border-color: var(--ink); }
 .profile { order: 9; } /* rightmost in the header */
@@ -851,3 +869,14 @@ body.role-client .mdate { cursor: default; border-style: solid; }
   animation: tourBurst 1.3s var(--ease) forwards; }
 @keyframes tourBurst { to { transform: translate(var(--x), var(--y)) rotate(var(--r)); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .tour-spot, .tour-card { transition: none; } .tour.try .tour-spot, .tour-card.in, .tour-burst span { animation: none; } .tour-burst { display: none; } }
+
+/* ---------- profile menu: rows, and the theme page ---------- */
+.pm-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; width: 100%; margin-top: 8px; padding: 10px 10px; border: 1px solid var(--rule); font-size: 12.5px; color: var(--graphite); text-align: left; }
+.pm-row:first-of-type { margin-top: 14px; }
+.pm-row b { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); font-weight: 600; white-space: nowrap; }
+.pm-row:hover { border-color: var(--ink); }
+.pm-dot { width: 12px; height: 12px; border-radius: 50%; border: 1px solid rgba(0,0,0,.2); background: linear-gradient(135deg, var(--a) 0 55%, var(--b) 55%); }
+.pm-back { margin-bottom: 12px; font: 600 15px var(--serif); color: var(--ink); }
+.pm-back:hover { opacity: .7; }
+.pm-page { animation: pmIn .25s var(--ease); }
+@keyframes pmIn { from { opacity: 0; transform: translateX(6px); } }

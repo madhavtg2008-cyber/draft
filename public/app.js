@@ -608,6 +608,13 @@ async function resolveChange(hunk, action) {
     const r = await api('POST', `/api/drafts/${state.cur.draft.id}/lanes/${lane}/changes`, { action, hunk, rev: info.rev });
     state.cur.lanes[lane] = r.lane;
     ledger(`${action === 'accept' ? 'Confirmed' : 'Rejected'} ${hunk === 'all' ? 'all changes' : 'a change'} on the ${LANE[lane].lower}.`);
+    if (r.carried) { // a confirmed client change also lands in the team and clean drafts
+      const c = r.carried, into = ['team', 'final'].filter((l) => c[l].placed).map((l) => LANE[l].lower);
+      const missed = ['team', 'final'].filter((l) => c[l].placed < c[l].total).map((l) => LANE[l].lower);
+      confirmDone(into.length ? `Confirmed — also added to the ${into.join(' and ')}` : 'Confirmed');
+      if (missed.length) ledger(`Some of it couldn't be placed in the ${missed.join(' and ')} — that passage reads differently there now. Add it by hand.`);
+      await refresh();
+    }
     renderDoc({ force: true });
     renderDesk();
   } catch (err) {

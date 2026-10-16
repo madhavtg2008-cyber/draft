@@ -212,17 +212,25 @@
               <div class="profile">
                 <button id="profileBtn" class="profile-btn" title="Profile & theme"></button>
                 <div id="profileMenu" class="profile-menu hidden">
-                  <div class="pm-name" id="pmName"></div>
-                  <div class="pm-sub" id="pmSub"></div>
-                  <button id="pmPlan" class="pm-plan team-only" type="button"><span id="pmFirm"></span><b id="pmPlanName"></b></button>
-                  <div class="pm-label">Theme</div>
-                  <div class="themes">
-                    <button class="theme-opt" data-theme="black" style="--a:#0c0c0c;--b:#fbfaf7"><i></i>Black</button>
-                    <button class="theme-opt" data-theme="white" style="--a:#f3f2ee;--b:#141414"><i></i>White</button>
-                    <button class="theme-opt" data-theme="navy" style="--a:#0d1729;--b:#f4efe2"><i></i>Navy</button>
+                  <div class="pm-page" id="pmMain">
+                    <div class="pm-name" id="pmName"></div>
+                    <div class="pm-sub" id="pmSub"></div>
+                    <button id="pmPlan" class="pm-row team-only" type="button"><span id="pmFirm"></span><b id="pmPlanName"></b></button>
+                    <button id="pmTheme" class="pm-row" type="button"><span>Theme</span><b><i class="pm-dot"></i><span id="pmThemeName"></span> ›</b></button>
+                    <button id="pmTour" class="pm-row" type="button"><span>Replay the tour</span><b>›</b></button>
+                    <button id="pmOut" class="pm-out">Sign out</button>
                   </div>
-                  <button id="pmTour" class="pm-tour" type="button">Replay the tour</button>
-                  <button id="pmOut" class="pm-out">Sign out</button>
+                  <!-- the theme page: opens from "Theme ›" -->
+                  <div class="pm-page hidden" id="pmThemes">
+                    <button id="pmBack" class="pm-back" type="button">‹ Theme</button>
+                    <div class="themes">
+                      <button class="theme-opt" data-theme="black" style="--a:#0c0c0c;--b:#fbfaf7"><i></i><span>Black</span><small>Classic</small></button>
+                      <button class="theme-opt" data-theme="white" style="--a:#f3f2ee;--b:#141414"><i></i><span>White</span><small>Daylight</small></button>
+                      <button class="theme-opt" data-theme="navy" style="--a:#0d1729;--b:#f4efe2"><i></i><span>Navy</span><small>Chambers</small></button>
+                      <button class="theme-opt" data-theme="oxblood" style="--a:#2b0d14;--b:#c9a46b"><i></i><span>Oxblood</span><small>Leather &amp; brass</small></button>
+                      <button class="theme-opt" data-theme="emerald" style="--a:#0b2a20;--b:#d8b878"><i></i><span>Emerald</span><small>Library green</small></button>
+                    </div>
+                  </div>
                 </div>
               </div>
               <div class="share team-only">

@@ -26,7 +26,7 @@ function tourSteps() {
     );
   }
   s.push(
-    { el: '.themes', title: 'Make it yours', body: 'Go on — click a theme. Black, White or Navy.', try: true, before: openProfileForTour, after: closeProfile },
+    { el: '.themes', title: 'Make it yours', body: 'Go on — click a theme. Five to choose from, and you can change it any time under Theme in this menu.', try: true, before: openProfileForTour, after: closeProfile },
     { title: () => 'You’re all set.', body: isTeam() ? 'Open a sheet, start drafting, and let Zoit keep the paper trail.' : 'Open your Client Draft whenever you’re ready.', done: true },
   );
   return s;
@@ -35,6 +35,7 @@ function openProfileForTour() {
   fillProfile();
   $('#profileMenu').classList.remove('hidden');
   $('#profileBtn').classList.add('on');
+  showProfilePage('themes');
 }
 
 // ---------- the overlay ----------

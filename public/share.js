@@ -208,14 +208,25 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ---------- profile menu: who you are, theme, sign out ----------
+const THEMES = ['black', 'white', 'navy', 'oxblood', 'emerald'];
 function applyTheme(name) {
-  const t = ['black', 'white', 'navy'].includes(name) ? name : 'black';
+  const t = THEMES.includes(name) ? name : 'black';
   document.documentElement.dataset.theme = t;
   lsSet('lex_theme', t);
   $$('.theme-opt').forEach((b) => b.classList.toggle('on', b.dataset.theme === t));
+  const on = $(`.theme-opt[data-theme="${t}"]`);
+  $('#pmThemeName').textContent = on ? $('span', on).textContent : '';
+  $('.pm-dot').style.cssText = on ? on.getAttribute('style') : '';
 }
 applyTheme(lsGet('lex_theme') || 'black');
-function closeProfile() { $('#profileMenu').classList.add('hidden'); $('#profileBtn').classList.remove('on'); }
+function closeProfile() { $('#profileMenu').classList.add('hidden'); $('#profileBtn').classList.remove('on'); showProfilePage('main'); }
+// the menu has two pages: the main one, and the theme picker behind "Theme ›"
+function showProfilePage(page) {
+  $('#pmMain').classList.toggle('hidden', page !== 'main');
+  $('#pmThemes').classList.toggle('hidden', page !== 'themes');
+}
+$('#pmTheme').addEventListener('click', () => showProfilePage('themes'));
+$('#pmBack').addEventListener('click', () => showProfilePage('main'));
 function fillProfile() {
   const me = state.me;
   if (!me) return;
@@ -225,7 +236,7 @@ function fillProfile() {
   $('#pmSub').textContent = `${me.email} · ${me.role === 'team' ? (me.title || 'Legal team') : 'Client'}`;
   if (me.firm) {
     $('#pmFirm').textContent = me.firm.name;
-    $('#pmPlanName').textContent = `${me.firm.plan[0].toUpperCase()}${me.firm.plan.slice(1)} plan →`;
+    $('#pmPlanName').textContent = `${me.firm.plan[0].toUpperCase()}${me.firm.plan.slice(1)} plan ›`;
   }
 }
 new MutationObserver(fillProfile).observe($('#app'), { attributes: true, attributeFilter: ['class'] });
