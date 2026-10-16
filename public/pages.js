@@ -62,12 +62,22 @@ function makeGap(height, block = false) {
 }
 
 let laying = false;
+// Phones get a reading mode: the text flows to the screen's width at a normal size instead of a shrunken
+// A4 page. The exact page layout (and Word / PDF export) is unchanged; it's only how it shows on a phone.
+const isPhone = () => window.innerWidth < 760;
 function layoutPages() {
   if (!state.lane || state.view !== 'text' || !state.cur || laying) return;
   laying = true;
   try {
     const ed = editor(), g = pageGeom(), pitch = g.h + PAGE_GAP;
     ed.querySelectorAll('.pg-gap').forEach((s) => s.remove());
+    if (isPhone()) {
+      Object.assign(ed.style, { width: '100%', padding: '24px 18px 64px', minHeight: '60vh' });
+      $('#paperCol').style.width = '100%';
+      $('#sheets').innerHTML = '<div class="sheet-pg phone" style="top:0;height:100%"></div>';
+      state.pages = 1;
+      return;
+    }
     Object.assign(ed.style, { width: `${g.w}px`, padding: `${g.mt}px ${g.mr}px ${g.mb}px ${g.ml}px`, minHeight: `${g.h}px` });
     $('#paperCol').style.width = `${g.w}px`;
 
@@ -202,6 +212,7 @@ editor().addEventListener('keydown', (e) => {
 
 // ---------- zoom: whole page, fit width, or a fixed percentage ----------
 function applyZoom() {
+  if (isPhone()) { $('#paperCol').style.zoom = '1'; return; } // phones read at normal size
   const mode = lsGet('lex_zoom_mode') || 'width';
   $('#tbZoom').value = mode;
   const g = pageGeom(), sc = $('#sheetScroll');

@@ -1072,3 +1072,15 @@ document.addEventListener('keydown', (e) => {
 
 // count this visit for the owner dashboard (anonymous; see /api/hit)
 fetch('/api/hit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: location.pathname }) }).catch(() => {});
+
+// ---------- phones: the sidebar folds into a top bar with a Matters menu ----------
+const rail = $('.rail');
+function setRailOpen(open) {
+  rail.classList.toggle('open', open);
+  $('#railMenu').setAttribute('aria-expanded', String(open));
+  $('#railMenu i').textContent = open ? '✕' : '☰';
+}
+$('#railMenu').addEventListener('click', () => setRailOpen(!rail.classList.contains('open')));
+// picking a matter (or opening one) closes the menu again
+$('#matterList').addEventListener('click', (e) => { if (e.target.closest('.matter:not(.confirm-del)') && !e.target.closest('[data-del]')) setRailOpen(false); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && rail.classList.contains('open') && window.innerWidth < 760) setRailOpen(false); });

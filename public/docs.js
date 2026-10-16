@@ -8,6 +8,7 @@ let docEditing = null; // 'new' | 'folder' | a document id | null
 let newDocFolder = ''; // a document made while a folder is open goes into that folder
 let openFolder = null; // the folder being looked into, like double-clicking a folder on a computer
 let openFolderMatter = null;
+const isTouch = () => matchMedia('(hover: none)').matches;
 let selected = null; // the tile picked with one click (double-click opens it)
 let exCollapsed = false;
 let confirmFolder = null; // the folder being asked about before it's deleted
@@ -71,7 +72,7 @@ function renderDocStrip() {
       </div>`;
     })() : ''}
     ${exCollapsed ? '' : `<div class="ex-tiles${navDir ? ` slide-${navDir}` : ''}">${tiles || '<p class="ex-empty">This folder is empty — add a document to it.</p>'}</div>
-    <p class="ex-hint">Double-click to open<span class="ex-esc">${openFolder && escArmed ? ' · Esc to go back' : ''}</span></p>`}`;
+    <p class="ex-hint">${isTouch() ? 'Tap to open' : 'Double-click to open'}<span class="ex-esc">${openFolder && escArmed ? ' · Esc to go back' : ''}</span></p>`}`;
   navDir = null;
   docStrip.classList.toggle('collapsed', exCollapsed);
   if (selected) $(`[data-doc="${selected}"], [data-folder="${CSS.escape(String(selected))}"]`, docStrip)?.classList.add('sel');
@@ -107,7 +108,8 @@ docStrip.addEventListener('click', async (e) => {
   // one click picks a folder or document, like on a computer; a double-click opens it
   const tile = e.target.closest('[data-folder], [data-doc]');
   if (!tile) return;
-  $$('.ex-tile.sel', docStrip).forEach((t) => t.classList.remove('sel'));
+  if (isTouch()) return openTile(tile); // phones and tablets: one tap opens, there's no double-click
+  $('.ex-tile.sel', docStrip).forEach((t) => t.classList.remove('sel'));
   tile.classList.add('sel');
   selected = tile.dataset.doc ? Number(tile.dataset.doc) : tile.dataset.folder;
 });
