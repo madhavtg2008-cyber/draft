@@ -11,6 +11,7 @@ let openFolderMatter = null;
 const isTouch = () => matchMedia('(hover: none)').matches;
 let selected = null; // the tile picked with one click (double-click opens it)
 let exCollapsed = false;
+let exOpening = false; // just expanded: the contents slide down
 let confirmFolder = null; // the folder being asked about before it's deleted
 let navDir = null; // 'in' or 'out': which way the tiles slide after opening or leaving a folder
 let escArmed = false; // Esc leaves a folder only right after going in, until you click somewhere else
@@ -55,7 +56,7 @@ function renderDocStrip() {
       <div class="ex-path">
         <button type="button" class="ex-toggle" data-collapse title="${exCollapsed ? 'Show' : 'Hide'} documents" aria-expanded="${!exCollapsed}">▾</button>
         ${openFolder && !exCollapsed ? '<button type="button" class="ex-back" data-up title="Back to all documents">← Back</button>' : ''}
-        <button type="button" class="ex-crumb${openFolder ? '' : ' here'}" data-up>Documents</button>
+        <button type="button" class="ex-crumb${openFolder ? '' : ' here'}" data-collapse>Documents</button>
         ${openFolder ? `<span class="ex-sep">›</span><span class="ex-crumb here">${ICON_FOLDER}${esc(openFolder)}</span>` : ''}
       </div>
       ${exCollapsed ? `<span class="ex-count">${docs.length} document${docs.length === 1 ? '' : 's'}${folders.length ? ` · ${folders.length} folder${folders.length === 1 ? '' : 's'}` : ''}</span>` : ''}
@@ -71,8 +72,9 @@ function renderDocStrip() {
         <span class="ex-confirm-btns"><button type="button" class="ex-del-yes" data-del-folder-yes>Delete folder</button><button type="button" class="link" data-del-folder-no>Cancel</button></span>
       </div>`;
     })() : ''}
-    ${exCollapsed ? '' : `<div class="ex-tiles${navDir ? ` slide-${navDir}` : ''}">${tiles || '<p class="ex-empty">This folder is empty — add a document to it.</p>'}</div>
-    <p class="ex-hint">${isTouch() ? 'Tap to open' : 'Double-click to open'}<span class="ex-esc">${openFolder && escArmed ? ' · Esc to go back' : ''}</span></p>`}`;
+    ${exCollapsed ? '' : `<div class="ex-body${exOpening ? ' dropping' : ''}"><div class="ex-tiles${navDir ? ` slide-${navDir}` : ''}">${tiles || '<p class="ex-empty">This folder is empty — add a document to it.</p>'}</div>
+    <p class="ex-hint">${isTouch() ? 'Tap to open' : 'Double-click to open'}<span class="ex-esc">${openFolder && escArmed ? ' · Esc to go back' : ''}</span></p></div>`}`;
+  exOpening = false;
   navDir = null;
   docStrip.classList.toggle('collapsed', exCollapsed);
   if (selected) $(`[data-doc="${selected}"], [data-folder="${CSS.escape(String(selected))}"]`, docStrip)?.classList.add('sel');
@@ -98,12 +100,8 @@ docStrip.addEventListener('click', async (e) => {
   }
   if (e.target.closest('[data-new-doc]')) { newDocFolder = openFolder || ''; return openDocEdit('new'); }
   if (e.target.closest('[data-new-folder]')) return openDocEdit('folder');
-  if (e.target.closest('[data-collapse]')) {
-    exCollapsed = !exCollapsed;
-    try { localStorage.setItem('zoit_docs_collapsed', exCollapsed ? '1' : '0'); } catch { /* private mode */ }
-    closeDocEdit();
-    return renderDocStrip();
-  }
+  // clicking the Documents bar (anywhere but its buttons) opens or closes the box
+  if (e.target.closest('[data-collapse]') || (e.target.closest('.ex-head') && !e.target.closest('button, a'))) return toggleExplorer();
   if (e.target.closest('[data-up]')) return goUp();
   // one click picks a folder or document, like on a computer; a double-click opens it
   const tile = e.target.closest('[data-folder], [data-doc]');
@@ -127,6 +125,20 @@ async function openTile(tile) {
   if (tile.dataset.folder) { openFolder = tile.dataset.folder; navDir = 'in'; escArmed = true; return renderDocStrip(); }
   const id = Number(tile.dataset.doc);
   if (id !== state.cur.draft.id) await openMatter(id); // each document opens onto its own three sheets
+}
+function toggleExplorer() {
+  if (exCollapsed) { exCollapsed = false; exOpening = true; return saveCollapsed(); }
+  // closing: let the contents slide up first
+  const body = $('.ex-body', docStrip);
+  const done = () => { exCollapsed = true; saveCollapsed(); };
+  if (!body || matchMedia('(prefers-reduced-motion: reduce)').matches) return done();
+  body.classList.add('lifting');
+  setTimeout(done, 200);
+}
+function saveCollapsed() {
+  try { localStorage.setItem('zoit_docs_collapsed', exCollapsed ? '1' : '0'); } catch { /* private mode */ }
+  closeDocEdit();
+  renderDocStrip();
 }
 function goUp() { if (openFolder) navDir = 'out'; openFolder = null; selected = null; escArmed = false; closeDocEdit(); renderDocStrip(); }
 // clicking anywhere outside the documents box means you've moved on: Esc no longer leaves the folder

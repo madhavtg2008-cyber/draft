@@ -1023,3 +1023,11 @@ button.ex-crumb:hover { color: var(--chalk); }
   .profile-menu { position: fixed; left: 12px; right: 12px; top: 60px; width: auto; }
   .tour-card { width: calc(100vw - 24px); }
 }
+/* the Documents bar opens and closes the box, with a short slide */
+.ex-head { cursor: pointer; user-select: none; }
+.ex-head button, .ex-head a { cursor: pointer; }
+.ex-body.dropping { animation: exDrop .24s var(--ease) both; transform-origin: top; }
+.ex-body.lifting { animation: exLift .2s ease-in both; transform-origin: top; }
+@keyframes exDrop { from { opacity: 0; transform: translateY(-8px) scaleY(.92); } }
+@keyframes exLift { to { opacity: 0; transform: translateY(-8px) scaleY(.92); } }
+@media (prefers-reduced-motion: reduce) { .ex-body.dropping, .ex-body.lifting { animation: none; } }
