@@ -944,3 +944,18 @@ button.ex-crumb:hover { color: var(--chalk); }
 .ex-del-yes:hover { background: #9c3a42; }
 .ex-confirm .link { color: var(--mute); font-size: 12px; }
 @media (prefers-reduced-motion: reduce) { .ex-tiles.slide-in > *, .ex-tiles.slide-out > * { animation: none; } }
+
+/* compact explorer + a clear Back button */
+.doc-strip { padding: 9px 12px 10px; margin-bottom: 14px; }
+.ex-head { margin-bottom: 6px; }
+.ex-act { padding: 5px 10px 5px 8px; font-size: 12px; }
+.ex-tiles { gap: 6px; }
+.ex-tile { width: 92px; gap: 4px; padding: 8px 6px 7px; border-radius: 7px; }
+.ex-tile .ex-ico { width: 34px; height: 30px; }
+.ex-doc .ex-ico { width: 27px; height: 32px; }
+.ex-name { font-size: 12px; }
+.ex-tile small { font-size: 10.5px; }
+.ex-more { width: 19px; height: 19px; top: 3px; right: 4px; font-size: 12px; }
+.ex-hint { margin-top: 4px; font-size: 10.5px; }
+.ex-back { display: inline-flex; align-items: center; gap: 4px; padding: 5px 12px; margin-right: 4px; background: var(--chalk); color: var(--night); font: 600 12px var(--sans); border-radius: 999px; transition: transform .15s, opacity .15s; animation: rise .25s var(--ease) both; }
+.ex-back:hover { transform: translateX(-2px); opacity: .9; }

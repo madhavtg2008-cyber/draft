@@ -18,7 +18,6 @@ try { exCollapsed = localStorage.getItem('zoit_docs_collapsed') === '1'; } catch
 // a manila folder and a page with a folded corner, like on any computer
 const ICON_FOLDER = '<svg class="ex-ico" viewBox="0 0 48 40" aria-hidden="true"><path d="M3 7a3 3 0 0 1 3-3h12.5l4 4.5H42a3 3 0 0 1 3 3V34a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3z" fill="#d9952b"/><path d="M3 14h42v20a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3z" fill="#f4bf4f"/><path d="M3 14h42v3H3z" fill="#f8d27a"/></svg>';
 const ICON_DOC = '<svg class="ex-ico" viewBox="0 0 38 46" aria-hidden="true"><path d="M4 2.5h21L34 11.5V43.5H4z" fill="#fdfcf9" stroke="#bdb8ad" stroke-width="1.4"/><path d="M25 2.5v9h9" fill="#e8e4da" stroke="#bdb8ad" stroke-width="1.4"/><path d="M9.5 18h19M9.5 23.5h19M9.5 29h19M9.5 34.5h12" stroke="#3b5ba5" stroke-width="2" stroke-linecap="round"/></svg>';
-const ICON_UP = '<svg class="ex-ico" viewBox="0 0 48 40" aria-hidden="true"><path d="M3 7a3 3 0 0 1 3-3h12.5l4 4.5H42a3 3 0 0 1 3 3V34a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="3 3"/><path d="M24 30V17m-6 6 6-6 6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
 function renderDocStrip() {
   const docs = state.cur?.documents || [];
@@ -48,12 +47,13 @@ function renderDocStrip() {
   };
   const inside = openFolder ? docs.filter((d) => d.folder === openFolder) : docs.filter((d) => !d.folder);
   const tiles = openFolder
-    ? `<button type="button" class="ex-tile ex-up" data-up title="Back to all documents">${ICON_UP}<span class="ex-name">Back</span></button>${inside.map(docTile).join('')}`
+    ? inside.map(docTile).join('')
     : `${inside.map(docTile).join('')}${folders.map(folderTile).join('')}`;
   docStrip.innerHTML = `
     <div class="ex-head">
       <div class="ex-path">
         <button type="button" class="ex-toggle" data-collapse title="${exCollapsed ? 'Show' : 'Hide'} documents" aria-expanded="${!exCollapsed}">▾</button>
+        ${openFolder && !exCollapsed ? '<button type="button" class="ex-back" data-up title="Back to all documents">← Back</button>' : ''}
         <button type="button" class="ex-crumb${openFolder ? '' : ' here'}" data-up>Documents</button>
         ${openFolder ? `<span class="ex-sep">›</span><span class="ex-crumb here">${ICON_FOLDER}${esc(openFolder)}</span>` : ''}
       </div>
