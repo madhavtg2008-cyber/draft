@@ -244,6 +244,7 @@ function fillProfile() {
   $('#profileBtn').style.setProperty('--c', me.color);
   $('#pmName').textContent = me.name;
   $('#pmSub').textContent = `${me.email} · ${me.role === 'team' ? (me.title || 'Legal team') : 'Client'}`;
+  $('#pmAdmin').classList.toggle('hidden', !me.owner); // only the site owner
   if (me.firm) {
     $('#pmFirm').textContent = me.firm.name;
     $('#pmPlanName').textContent = `${me.firm.plan[0].toUpperCase()}${me.firm.plan.slice(1)} plan ›`;

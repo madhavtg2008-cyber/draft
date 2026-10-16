@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>Zoit · Owner</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root { --bg: #0b0b0b; --panel: #141414; --line: #262626; --fg: #f1efe9; --dim: #8d8a83; --accent: #f4bf4f; --live: #3ecf8e; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.5 Inter, system-ui, sans-serif; }
+    main { max-width: 1180px; margin: 0 auto; padding: 28px 20px 60px; }
+    header { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 22px; }
+    h1 { margin: 0; font: 600 34px 'Cormorant Garamond', Georgia, serif; }
+    h1 small { font: 600 11px Inter; letter-spacing: .24em; color: var(--dim); margin-left: 10px; vertical-align: middle; }
+    .stamp { color: var(--dim); font-size: 12px; }
+    h2 { margin: 30px 0 10px; font: 600 11px Inter; letter-spacing: .22em; text-transform: uppercase; color: var(--dim); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+    .card { background: var(--panel); border: 1px solid var(--line); padding: 14px 16px; }
+    .card b { display: block; font: 600 30px/1.1 'Cormorant Garamond', Georgia, serif; }
+    .card span { color: var(--dim); font-size: 12px; }
+    .card small { display: block; color: var(--dim); font-size: 11.5px; margin-top: 2px; }
+    .live b { color: var(--live); }
+    .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--live); margin-right: 6px; box-shadow: 0 0 0 0 rgba(62,207,142,.6); animation: pulse 1.8s infinite; }
+    @keyframes pulse { 70% { box-shadow: 0 0 0 8px rgba(62,207,142,0); } 100% { box-shadow: 0 0 0 0 rgba(62,207,142,0); } }
+    .chart { background: var(--panel); border: 1px solid var(--line); padding: 16px; }
+    .bars { display: flex; align-items: flex-end; gap: 6px; height: 140px; }
+    .bar { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; gap: 4px; min-width: 0; }
+    .bar i { width: 100%; max-width: 34px; background: var(--fg); border-radius: 3px 3px 0 0; min-height: 2px; position: relative; }
+    .bar i.s { background: var(--accent); max-width: 34px; }
+    .bar em { font-style: normal; font-size: 10.5px; color: var(--dim); white-space: nowrap; }
+    .bar u { text-decoration: none; font-size: 11px; color: var(--fg); }
+    .legend { display: flex; gap: 16px; margin-top: 10px; font-size: 12px; color: var(--dim); }
+    .legend i { display: inline-block; width: 10px; height: 10px; margin-right: 6px; vertical-align: -1px; background: var(--fg); }
+    .legend i.s { background: var(--accent); }
+    table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); }
+    th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); font-size: 13px; vertical-align: top; }
+    th { font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); font-weight: 600; }
+    td small { color: var(--dim); display: block; }
+    tr:last-child td { border-bottom: 0; }
+    .tag { display: inline-block; padding: 1px 7px; border: 1px solid var(--line); font-size: 11px; color: var(--dim); }
+    .tag.team, .tag.firm { color: var(--accent); border-color: #5a4a22; }
+    .tag.on { color: var(--live); border-color: #1e5a40; }
+    .empty { color: var(--dim); font-style: italic; padding: 12px; }
+    .wrap { overflow-x: auto; }
+    .note { color: var(--dim); font-size: 12px; margin-top: 26px; }
+    .gate { max-width: 460px; margin: 18vh auto; text-align: center; color: var(--dim); }
+    .gate a { color: var(--fg); }
+    @media (max-width: 700px) { h1 { font-size: 28px; } .bar em { display: none; } }
+  </style>
+</head>
+<body>
+<main id="main">
+  <p class="gate">Loading…</p>
+</main>
+<script>
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const ago = (t) => {
+  if (!t) return 'never';
+  const s = (Date.now() - t) / 1000;
+  if (s < 90) return 'just now';
+  if (s < 3600) return `${Math.round(s / 60)} min ago`;
+  if (s < 86400) return `${Math.round(s / 3600)} h ago`;
+  return `${Math.round(s / 86400)} d ago`;
+};
+const date = (t) => new Date(t).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+const plan = { free: 'Free', team: 'Team · ₹250', firm: 'Firm · ₹450' };
+
+async function load() {
+  let d;
+  try {
+    const r = await fetch('/api/admin/stats', { credentials: 'same-origin' });
+    if (!r.ok) throw new Error(r.status);
+    d = await r.json();
+  } catch {
+    document.getElementById('main').innerHTML = '<p class="gate">This page is only for the owner of Zoit.<br/><a href="/">Sign in on Zoit</a> with the owner account, then open this page again.</p>';
+    return;
+  }
+  const t = d.totals, tr = d.traffic;
+  const max = Math.max(1, ...tr.daily.map((x) => Math.max(x.visitors, x.signups)));
+  const paid = (t.plans.team || 0) * 250 + (t.plans.firm || 0) * 450;
+  document.getElementById('main').innerHTML = `
+    <header><h1>Zoit<small>OWNER</small></h1><span class="stamp">Updated ${new Date(d.generatedAt).toLocaleTimeString()} · refreshes every 30 seconds</span></header>
+
+    <h2>Right now</h2>
+    <div class="grid">
+      <div class="card live"><b><span class="dot"></span>${d.live.users.length}</b><span>signed in & active (last 5 min)</span></div>
+      <div class="card live"><b>${d.live.visitors}</b><span>people on the site (last 5 min)</span></div>
+    </div>
+    ${d.live.users.length ? `<div class="wrap" style="margin-top:10px"><table><tr><th>Who</th><th>Role</th><th>Firm</th><th>Last action</th></tr>
+      ${d.live.users.map((u) => `<tr><td>${esc(u.name)}<small>${esc(u.email)}</small></td><td><span class="tag ${u.role}">${u.role === 'team' ? 'Lawyer' : 'Client'}</span></td><td>${esc(u.firm || '—')}</td><td>${ago(u.lastSeen)}</td></tr>`).join('')}
+    </table></div>` : ''}
+
+    <h2>Visitors</h2>
+    <div class="grid">
+      <div class="card"><b>${tr.today.visitors}</b><span>visitors today</span><small>${tr.today.views} page views</small></div>
+      <div class="card"><b>${tr.week.visitors}</b><span>visitors · 7 days</span><small>${tr.week.views} page views</small></div>
+      <div class="card"><b>${tr.month.visitors}</b><span>visitors · 30 days</span><small>${tr.month.views} page views</small></div>
+      <div class="card"><b>${t.activeWeek}</b><span>people who signed in · 7 days</span></div>
+    </div>
+    <div class="chart" style="margin-top:10px">
+      <div class="bars">${tr.daily.map((x) => `<div class="bar" title="${x.day}: ${x.visitors} visitors, ${x.signups} sign-ups">
+        <u>${x.visitors || ''}</u>
+        <div style="display:flex;gap:2px;align-items:flex-end;height:100%;width:100%;justify-content:center">
+          <i style="height:${(x.visitors / max) * 100}%"></i><i class="s" style="height:${(x.signups / max) * 100}%"></i>
+        </div>
+        <em>${new Date(x.day + 'T00:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</em></div>`).join('')}</div>
+      <div class="legend"><span><i></i>Visitors</span><span><i class="s"></i>Sign-ups</span><span>last 14 days</span></div>
+    </div>
+
+    <h2>Zoit so far</h2>
+    <div class="grid">
+      <div class="card"><b>${t.firms}</b><span>law firms</span></div>
+      <div class="card"><b>${t.lawyers}</b><span>lawyers</span></div>
+      <div class="card"><b>${t.clients}</b><span>clients</span></div>
+      <div class="card"><b>${t.matters}</b><span>matters</span></div>
+      <div class="card"><b>${t.documents}</b><span>documents</span></div>
+      <div class="card"><b>₹${paid.toLocaleString('en-IN')}</b><span>monthly, if paid plans are paying</span><small>Free ${t.plans.free || 0} · Team ${t.plans.team || 0} · Firm ${t.plans.firm || 0}</small></div>
+    </div>
+
+    <h2>Newest sign-ups</h2>
+    <div class="wrap">${d.recentSignups.length ? `<table><tr><th>Who</th><th>Role</th><th>Firm</th><th>Joined</th><th>Last seen</th></tr>
+      ${d.recentSignups.map((u) => `<tr><td>${esc(u.name)}<small>${esc(u.email)}</small></td><td><span class="tag ${u.role}">${u.role === 'team' ? 'Lawyer' : 'Client'}</span>${u.joined ? '' : ' <span class="tag">invited</span>'}</td><td>${esc(u.firm || '—')}</td><td>${date(u.createdAt)}</td><td>${ago(u.lastSeen)}</td></tr>`).join('')}
+    </table>` : '<p class="empty">No sign-ups yet.</p>'}</div>
+
+    <h2>Firms</h2>
+    <div class="wrap">${d.firms.length ? `<table><tr><th>Firm</th><th>Plan</th><th>Lawyers</th><th>Matters</th><th>Started</th><th>Last active</th></tr>
+      ${d.firms.map((f) => `<tr><td>${esc(f.name)}<small>${esc(f.head || '')}</small></td><td><span class="tag ${f.plan !== 'free' ? 'firm' : ''}">${plan[f.plan] || f.plan}</span></td><td>${f.lawyers}</td><td>${f.matters}</td><td>${date(f.createdAt)}</td><td>${ago(f.lastActive)}</td></tr>`).join('')}
+    </table>` : '<p class="empty">No firms yet.</p>'}</div>
+
+    <p class="note">Demo accounts and sample clients are left out. Visitors are counted anonymously — no addresses are stored. Nobody's documents are shown here.</p>`;
+}
+load();
+setInterval(load, 30000);
+</script>
+</body>
+</html>

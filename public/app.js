@@ -1069,3 +1069,6 @@ $('.mdate').addEventListener('click', (e) => {
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && state.confirmDel) { e.preventDefault(); state.confirmDel = null; renderMatters(); }
 });
+
+// count this visit for the owner dashboard (anonymous; see /api/hit)
+fetch('/api/hit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: location.pathname }) }).catch(() => {});

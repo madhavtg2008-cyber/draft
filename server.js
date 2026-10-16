@@ -160,6 +160,7 @@ for (const sql of [
   'ALTER TABLE users ADD COLUMN firm_id INTEGER',                          // the law firm a lawyer belongs to (clients: none)
   'ALTER TABLE drafts ADD COLUMN firm_id INTEGER',                         // the firm that owns the matter
   'ALTER TABLE users ADD COLUMN tour_done INTEGER NOT NULL DEFAULT 0',     // has seen the first-time tutorial
+  'ALTER TABLE users ADD COLUMN last_seen INTEGER',                        // last time they used the site (owner dashboard: who is on now)
   'ALTER TABLE drafts ADD COLUMN sample INTEGER NOT NULL DEFAULT 0',       // the sample matter every new firm starts with
   'ALTER TABLE drafts ADD COLUMN parent_id INTEGER',                       // a further document inside a matter (null = the matter itself)
   'ALTER TABLE drafts ADD COLUMN folder TEXT',                             // the folder a document sits in, within its matter
@@ -216,7 +217,10 @@ function firmInfo(u) {
 }
 // the shared demo logins: every visitor gets the tour (the browser remembers it per visit)
 const isDemoAccount = (u) => /@lexdraft.test$/i.test(u?.email || '');
-const meUser = (u) => u && { ...publicUser(u), firm: firmInfo(u), demo: isDemoAccount(u), tourDone: isDemoAccount(u) ? false : !!u.tour_done };
+// the site owner(s): OWNER_EMAIL, comma-separated. Only they can open the dashboard at /admin.
+const OWNERS = String(process.env.OWNER_EMAIL || '').toLowerCase().split(',').map((x) => x.trim()).filter(Boolean);
+const isOwner = (u) => !!u && OWNERS.includes(String(u.email).toLowerCase());
+const meUser = (u) => u && { ...publicUser(u), firm: firmInfo(u), demo: isDemoAccount(u), owner: isOwner(u), tourDone: isDemoAccount(u) ? false : !!u.tour_done };
 // a new law firm: its own workspace on the Free plan, with this person as Team Head
 function createHead(name, email, passHash, firmName) {
   const fid = createFirm(firmName || `${String(name).trim()}'s firm`);
@@ -786,6 +790,8 @@ function auth(req, res, next) {
   const row = userFromToken(parseCookies(req).lex_session);
   if (!row) return res.status(401).json({ error: 'Not signed in' });
   req.user = row;
+  // remember when they were last here (at most once a minute) for the owner's "using it now"
+  if (!row.last_seen || now() - row.last_seen > 60000) db.prepare('UPDATE users SET last_seen = ? WHERE id = ?').run(now(), row.id);
   next();
 }
 const teamOnly = (req, res, next) => (req.user.role === 'team' ? next() : res.status(403).json({ error: 'Legal team only' }));
@@ -1633,8 +1639,7 @@ app.patch('/api/firm', auth, headOnly, (req, res) => {
   res.json({ user: meUser(req.user) });
 });
 app.post('/api/admin/firms/:id/plan', auth, (req, res) => {
-  const owner = String(process.env.OWNER_EMAIL || '').toLowerCase().trim();
-  if (!owner || req.user.email !== owner) return res.status(404).json({ error: 'Not found' });
+  if (!isOwner(req.user)) return res.status(404).json({ error: 'Not found' });
   if (!PLANS[req.body?.plan] || !getFirm(Number(req.params.id))) return res.status(400).json({ error: 'Unknown firm or plan' });
   db.prepare('UPDATE firms SET plan = ? WHERE id = ?').run(req.body.plan, Number(req.params.id));
   res.json({ ok: true });
@@ -1673,6 +1678,66 @@ app.get('/api/events', auth, (req, res) => {
   });
 });
 
+// ---------- owner dashboard: visits and what's happening ----------
+// A visit is counted per page load with an anonymous visitor id: a one-way hash of the network address
+// and browser, salted and reset daily — no addresses are stored.
+db.exec('CREATE TABLE IF NOT EXISTS visits (id INTEGER PRIMARY KEY AUTOINCREMENT, day TEXT NOT NULL, visitor TEXT NOT NULL, path TEXT, user_id INTEGER, ts INTEGER NOT NULL)');
+const dayOf = (t) => new Date(t).toISOString().slice(0, 10);
+app.post('/api/hit', (req, res) => {
+  const t = now(), day = dayOf(t);
+  const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
+  const visitor = crypto.createHash('sha256').update(`${TICKET_KEY}|${day}|${ip}|${req.headers['user-agent'] || ''}`).digest('hex').slice(0, 24);
+  const u = userFromToken(parseCookies(req).lex_session);
+  db.prepare('INSERT INTO visits (day, visitor, path, user_id, ts) VALUES (?,?,?,?,?)').run(day, visitor, String(req.body?.path || '/').slice(0, 100), u?.id ?? null, t);
+  res.json({ ok: true });
+});
+const ownerOnly = (req, res, next) => (isOwner(req.user) ? next() : res.status(404).json({ error: 'Not found' }));
+app.get('/api/admin/stats', auth, ownerOnly, (req, res) => {
+  const t = now(), day = 86400000;
+  const real = "email NOT LIKE '%@lexdraft.test' AND email NOT LIKE '%.invalid'"; // leave out demo and sample people
+  const count = (sql, ...a) => db.prepare(sql).get(...a).n;
+  const since = (ms) => dayOf(t - ms);
+  const visitors = (from) => count('SELECT COUNT(DISTINCT day || visitor) AS n FROM visits WHERE day >= ?', from);
+  const views = (from) => count('SELECT COUNT(*) AS n FROM visits WHERE day >= ?', from);
+  const days = [...Array(14).keys()].reverse().map((k) => dayOf(t - k * day));
+  const firmName = (id) => (id ? getFirm(id)?.name : null);
+  res.json({
+    generatedAt: t,
+    live: {
+      users: db.prepare(`SELECT id, name, email, role, firm_id, last_seen FROM users WHERE last_seen > ? AND ${real} ORDER BY last_seen DESC`).all(t - 5 * 60000)
+        .map((u) => ({ name: u.name, email: u.email, role: u.role, firm: firmName(u.firm_id), lastSeen: u.last_seen })),
+      visitors: count('SELECT COUNT(DISTINCT visitor) AS n FROM visits WHERE ts > ?', t - 5 * 60000),
+    },
+    traffic: {
+      today: { visitors: visitors(since(0)), views: views(since(0)) },
+      week: { visitors: visitors(since(6 * day)), views: views(since(6 * day)) },
+      month: { visitors: visitors(since(29 * day)), views: views(since(29 * day)) },
+      daily: days.map((d) => ({
+        day: d,
+        visitors: count('SELECT COUNT(DISTINCT visitor) AS n FROM visits WHERE day = ?', d),
+        signups: count(`SELECT COUNT(*) AS n FROM users WHERE created_at >= ? AND created_at < ? AND ${real}`, Date.parse(d), Date.parse(d) + day),
+      })),
+    },
+    totals: {
+      firms: count('SELECT COUNT(*) AS n FROM firms WHERE demo = 0'),
+      lawyers: count(`SELECT COUNT(*) AS n FROM users WHERE role = 'team' AND disabled = 0 AND ${real}`),
+      clients: count(`SELECT COUNT(*) AS n FROM users WHERE role = 'client' AND ${real}`),
+      matters: count('SELECT COUNT(*) AS n FROM drafts d JOIN firms f ON f.id = d.firm_id WHERE f.demo = 0 AND d.parent_id IS NULL AND d.sample = 0'),
+      documents: count('SELECT COUNT(*) AS n FROM drafts d JOIN firms f ON f.id = d.firm_id WHERE f.demo = 0 AND d.sample = 0'),
+      activeWeek: count(`SELECT COUNT(*) AS n FROM users WHERE last_seen > ? AND ${real}`, t - 7 * day),
+      plans: Object.fromEntries(Object.keys(PLANS).map((p) => [p, count('SELECT COUNT(*) AS n FROM firms WHERE demo = 0 AND plan = ?', p)])),
+    },
+    recentSignups: db.prepare(`SELECT name, email, role, firm_id, created_at, last_seen, pass_hash FROM users WHERE ${real} ORDER BY created_at DESC LIMIT 15`).all()
+      .map((u) => ({ name: u.name, email: u.email, role: u.role, firm: firmName(u.firm_id), createdAt: u.created_at, lastSeen: u.last_seen, joined: !!u.pass_hash })),
+    firms: db.prepare('SELECT * FROM firms WHERE demo = 0 ORDER BY created_at DESC LIMIT 50').all().map((f) => ({
+      name: f.name, plan: f.plan, createdAt: f.created_at,
+      lawyers: seatsUsed(f.id), matters: mattersUsed(f.id),
+      head: db.prepare("SELECT email FROM users WHERE firm_id = ? AND head = 1").get(f.id)?.email || null,
+      lastActive: db.prepare('SELECT MAX(last_seen) AS t FROM users WHERE firm_id = ?').get(f.id).t,
+    })),
+  });
+});
+app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 app.get('/privacy', (req, res) => res.sendFile(path.join(__dirname, 'public', 'legal', 'privacy.html')));
 app.get('/terms', (req, res) => res.sendFile(path.join(__dirname, 'public', 'legal', 'terms.html')));
