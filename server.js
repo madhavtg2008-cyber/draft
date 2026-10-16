@@ -163,6 +163,7 @@ for (const sql of [
   'ALTER TABLE drafts ADD COLUMN sample INTEGER NOT NULL DEFAULT 0',       // the sample matter every new firm starts with
   'ALTER TABLE drafts ADD COLUMN parent_id INTEGER',                       // a further document inside a matter (null = the matter itself)
   'ALTER TABLE drafts ADD COLUMN folder TEXT',                             // the folder a document sits in, within its matter
+  'ALTER TABLE drafts ADD COLUMN folders TEXT',                            // a matter's folders, kept even while empty (JSON list)
   'ALTER TABLE drafts ADD COLUMN doc_name TEXT',                           // the document's own name (the matter's first one: "Main draft")
 ]) { try { db.exec(sql); } catch { /* already there */ } }
 // Each law firm is its own private workspace with its own Team Head, team, matters and plan.
@@ -963,6 +964,13 @@ function matterDocs(rootId) {
   return db.prepare('SELECT id, title, doc_name, parent_id, folder, updated_at FROM drafts WHERE id = ? OR parent_id = ? ORDER BY (parent_id IS NOT NULL), id').all(rootId, rootId)
     .map((x) => ({ id: x.id, name: docName(x), folder: x.folder || null, main: !x.parent_id, updated_at: x.updated_at }));
 }
+// a matter's folders: the ones made on purpose (even if still empty) plus any its documents are in
+function matterFolders(m) {
+  let saved = [];
+  try { saved = JSON.parse(m.folders || '[]'); } catch { /* none */ }
+  const used = matterDocs(m.id).map((x) => x.folder).filter(Boolean);
+  return [...new Set([...saved, ...used])];
+}
 app.get('/api/drafts/:id', auth, loadDraft, (req, res) => {
   const d = req.draft, m = rootOf(d);
   const lanes = {};
@@ -981,7 +989,7 @@ app.get('/api/drafts/:id', auth, loadDraft, (req, res) => {
     FROM requests r JOIN users u ON u.id = r.requested_by WHERE r.draft_id = ? AND r.status = 'pending' ORDER BY r.id`).all(d.id);
   // the matter's details, with this document's own id, name, folder and page set-up
   const draft = { ...m, id: d.id, matterId: m.id, docName: docName(d), folder: d.folder || null, page: pageOf(d), client: m.client_id ? publicUser(getUser(m.client_id)) : null };
-  res.json({ draft, documents: matterDocs(m.id), lanes, comments, activity, people, head, requests, presence: presenceFor(d.id) });
+  res.json({ draft, documents: matterDocs(m.id), folders: matterFolders(m), lanes, comments, activity, people, head, requests, presence: presenceFor(d.id) });
 });
 
 app.patch('/api/drafts/:id', auth, loadDraft, (req, res) => {
@@ -1332,6 +1340,25 @@ app.post('/api/drafts/:id/lanes/:lane/new-document', auth, teamOnly, loadDraft, 
   logActivity(req.draft.id, lane, `started a new document (${tpl.name.toLowerCase()})`, req.user.id);
   laneChanged(req.draft.id, lane, req.user);
   res.json({ lane: laneInfo(req.user, req.draft, lane) });
+});
+
+// make a folder in a matter (it stays even while empty), or remove an empty one
+app.post('/api/drafts/:id/folders', auth, teamOnly, loadDraft, toMatter, (req, res) => {
+  const m = req.draft, name = String(req.body?.name || '').trim().slice(0, 80);
+  if (!name) return res.status(400).json({ error: 'Give the folder a name' });
+  const list = matterFolders(m);
+  if (list.some((f) => f.toLowerCase() === name.toLowerCase())) return res.status(409).json({ error: 'There is already a folder with that name' });
+  db.prepare('UPDATE drafts SET folders = ? WHERE id = ?').run(JSON.stringify([...list, name]), m.id);
+  logActivity(m.id, null, `made the folder "${name}"`, req.user.id);
+  for (const x of matterDocs(m.id)) broadcast(x.id, 'draft', { by: req.user.name });
+  res.json({ folders: matterFolders(rootOf(m)) });
+});
+app.delete('/api/drafts/:id/folders/:name', auth, teamOnly, loadDraft, toMatter, (req, res) => {
+  const m = req.draft, name = String(req.params.name);
+  if (matterDocs(m.id).some((x) => x.folder === name)) return res.status(400).json({ error: 'Move or delete the documents in this folder first' });
+  db.prepare('UPDATE drafts SET folders = ? WHERE id = ?').run(JSON.stringify(matterFolders(m).filter((f) => f !== name)), m.id);
+  for (const x of matterDocs(m.id)) broadcast(x.id, 'draft', { by: req.user.name });
+  res.json({ folders: matterFolders(rootOf(m)) });
 });
 
 // a further document inside a matter, optionally in a folder: blank, from a template, or from a dropped file

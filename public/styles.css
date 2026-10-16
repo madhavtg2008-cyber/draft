@@ -881,22 +881,38 @@ body.role-client .mdate { cursor: default; border-style: solid; }
 .pm-page { animation: pmIn .25s var(--ease); }
 @keyframes pmIn { from { opacity: 0; transform: translateX(6px); } }
 
-/* ---------- documents inside a matter (by folder) ---------- */
-.doc-strip { display: flex; align-items: center; gap: 14px; margin: -12px 0 18px; animation: rise .6s var(--ease) both; }
-.ds-label { flex: none; font: 600 10px var(--sans); letter-spacing: .22em; text-transform: uppercase; color: var(--ui-dim); }
-.ds-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
-.ds-doc { position: relative; display: inline-flex; align-items: center; gap: 6px; max-width: 220px; padding: 6px 12px; border: 1px solid var(--line); color: var(--mute);
-  font: 15px var(--body); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: border-color .2s, color .2s, background .2s; }
-.ds-doc:hover { color: var(--chalk); border-color: var(--ui-border); }
-.ds-doc.on { color: var(--night); background: var(--chalk); border-color: var(--chalk); }
-.ds-more { margin-left: 2px; padding: 0 2px; font-weight: 700; opacity: .7; }
-.ds-more:hover { opacity: 1; }
-.ds-folder { display: inline-flex; align-items: center; gap: 6px; padding: 3px 3px 3px 9px; border: 1px dashed var(--line); }
-.ds-folder svg { width: 14px; height: 14px; fill: none; stroke: var(--mute); stroke-width: 1.2; }
-.ds-folder b { font: 600 10.5px var(--sans); letter-spacing: .1em; text-transform: uppercase; color: var(--mute); margin-right: 2px; }
-.ds-new { padding: 6px 12px; border: 1px dashed var(--ui-border); color: var(--mute); font-size: 12px; letter-spacing: .04em; }
-.ds-new:hover { color: var(--chalk); border-color: var(--chalk); }
-.doc-edit { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: -6px 0 18px; padding: 12px 14px; border: 1px solid var(--line); background: var(--night-2); animation: rise .3s var(--ease) both; }
+/* ---------- documents inside a matter: a small file explorer ---------- */
+.doc-strip { margin: -10px 0 18px; padding: 12px 14px 14px; border: 1px solid var(--ui-border); background: var(--ui-raise); animation: rise .6s var(--ease) both; }
+.ex-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.ex-path { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.ex-crumb { display: inline-flex; align-items: center; gap: 6px; font: 600 11px var(--sans); letter-spacing: .16em; text-transform: uppercase; color: var(--ui-dim); }
+.ex-crumb .ex-ico { width: 18px; height: 15px; }
+button.ex-crumb:hover { color: var(--chalk); }
+.ex-crumb.here { color: var(--chalk); }
+.ex-sep { color: var(--ui-dim); }
+.ex-actions { display: flex; gap: 8px; }
+.ex-act { display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px 6px 9px; border: 1px solid var(--ui-border); color: var(--chalk); font-size: 12.5px; font-weight: 500; transition: background .2s, border-color .2s; }
+.ex-act .ex-ico { width: 16px; height: 16px; }
+.ex-act:hover { background: var(--night-3); border-color: var(--chalk); }
+.ex-tiles { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: thin; }
+.ex-tile { position: relative; flex: none; width: 118px; display: grid; justify-items: center; align-content: start; gap: 6px; padding: 12px 8px 10px;
+  border: 1px solid transparent; border-radius: 8px; color: var(--chalk); text-align: center; transition: background .18s, border-color .18s, transform .18s; }
+.ex-tile:hover { background: var(--night-3); border-color: var(--ui-border); transform: translateY(-2px); }
+.ex-tile .ex-ico { width: 44px; height: 40px; filter: drop-shadow(0 4px 6px rgba(0,0,0,.25)); transition: transform .18s; }
+.ex-tile:hover .ex-ico { transform: scale(1.06); }
+.ex-doc .ex-ico { width: 36px; }
+.ex-name { max-width: 100%; font: 500 13px/1.25 var(--sans); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word; }
+.ex-tile small { font-size: 11px; color: var(--ui-dim); margin-top: -3px; }
+.ex-tile.on { background: var(--chalk); color: var(--night); border-color: var(--chalk); }
+.ex-tile.on .ex-name { font-weight: 600; }
+.ex-folder.holds .ex-name { text-decoration: underline; text-underline-offset: 3px; }
+.ex-up { color: var(--ui-dim); }
+.ex-up:hover { color: var(--chalk); }
+.ex-more { position: absolute; top: 4px; right: 6px; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%; font-weight: 700; line-height: 1; background: rgba(0,0,0,.08); }
+.ex-tile:not(.on) .ex-more { background: var(--night-2); color: var(--mute); }
+.ex-more:hover { background: rgba(0,0,0,.18); }
+.ex-empty { margin: 6px 4px; font: italic 14px var(--body); color: var(--ui-dim); }
+.doc-edit { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: -8px 0 18px; padding: 12px 14px; border: 1px solid var(--ui-border); background: var(--night-2); animation: rise .3s var(--ease) both; }
 .doc-edit input, .doc-edit select { background: transparent; border: 0; border-bottom: 1px solid var(--line); padding: 7px 2px; color: var(--chalk); font: 16px var(--body); outline: none; min-width: 180px; }
 .doc-edit input:focus { border-color: var(--chalk); }
 .doc-edit select option { color: #141414; }
@@ -905,4 +921,4 @@ body.role-client .mdate { cursor: default; border-style: solid; }
 .de-del.armed { font-weight: 600; text-decoration: underline; }
 .de-error { flex-basis: 100%; color: #e06c75; font-size: 12.5px; }
 .de-error:empty { display: none; }
-@media (max-width: 900px) { .doc-strip { flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 0; } }
+@media (max-width: 900px) { .doc-strip { margin-top: 0; } .ex-tile { width: 100px; } }
