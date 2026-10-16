@@ -150,8 +150,9 @@
       <div class="team-only">
         <button id="docToggle" class="rail-new">+ New document</button>
         <form id="docForm" class="new-form hidden">
-          <label class="nf-label">New document</label>
+          <label class="nf-label" id="docFormLabel">New document</label>
           <input name="title" required placeholder="Document name, e.g. Board resolution" />
+          <input name="folder" list="folderList" placeholder="Folder (optional)" id="docFolder" />
           <select name="template" id="docTemplate"></select>
           <div id="docError" class="nf-error"></div>
           <div class="row"><button type="button" id="docCancel" class="link">Cancel</button><button class="btn-primary sm" type="submit">Create</button></div>
@@ -253,6 +254,11 @@
             <ol id="stepper" class="stepper"></ol>
           </div>
         </header>
+
+        <!-- the documents in this matter, by folder; each has its own three sheets -->
+        <nav id="docStrip" class="doc-strip hidden" aria-label="Documents in this matter"></nav>
+        <form id="docEdit" class="doc-edit hidden" autocomplete="off"></form>
+        <datalist id="folderList"></datalist>
 
         <!-- the three sheets: nothing on them but their name -->
         <div class="desk" id="desk">
@@ -448,6 +454,7 @@
   <script src="/share.js"></script>
   <script src="/team.js"></script>
   <script src="/plans.js"></script>
+  <script src="/docs.js"></script>
   <script src="/tour.js"></script>
 </body>
 </html>

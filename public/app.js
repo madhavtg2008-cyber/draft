@@ -201,7 +201,7 @@ function renderMatters() {
       <span>Delete <b>${esc(d.title)}</b> and everything in it?</span>
       <span class="cd-actions"><button data-del-yes="${d.id}">Delete</button><button data-del-no>Cancel</button></span>
     </div>` : `
-    <div class="matter ${state.cur?.draft.id === d.id ? 'on' : ''}" data-id="${d.id}" role="button" tabindex="0">
+    <div class="matter ${(state.cur?.draft.matterId ?? state.cur?.draft.id) === d.id ? 'on' : ''}" data-id="${d.id}" role="button" tabindex="0">
       <b>${esc(d.title)}</b><small>${esc(d.matter_no)} · ${esc(statusLabel(d.status))}${d.matter_date ? ` · ${fmtMatterDate(d.matter_date)}` : ''}</small>
       ${team ? `<span class="m-trash" data-del="${d.id}" role="button" title="Delete this matter"><svg viewBox="0 0 16 16"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5M7 7v4M9 7v4"/></svg></span>` : ''}
     </div>`).join('') || '<p class="rail-label">None yet</p>';
@@ -209,11 +209,12 @@ function renderMatters() {
 async function deleteMatter(id) {
   const d = state.drafts.find((x) => x.id === id);
   try {
-    if (state.lane && state.cur?.draft.id === id) await closeDoc(true);
+    const openId = state.cur?.draft.matterId ?? state.cur?.draft.id;
+    if (state.lane && openId === id) await closeDoc(true);
     await api('DELETE', `/api/drafts/${id}`);
     state.confirmDel = null;
     if (lsGet('lex_last') === String(id)) lsSet('lex_last', '');
-    const wasOpen = state.cur?.draft.id === id;
+    const wasOpen = openId === id;
     if (wasOpen) state.cur = null;
     await loadDrafts();
     if (wasOpen) state.drafts[0] ? await openMatter(state.drafts[0].id) : showEmpty();
@@ -341,6 +342,7 @@ function renderDesk() {
   const idx = STATUSES.findIndex(([k]) => k === draft.status);
   $('#stepper').innerHTML = STATUSES.map(([k, l], i) => `<li data-status="${k}" class="${i < idx ? 'done' : i === idx ? 'now' : ''}"><i></i>${l}</li>`).join('');
   renderPresence(state.cur.presence);
+  if (typeof renderDocStrip === 'function') renderDocStrip(); // docs.js
   // cards carry nothing but a pending-changes marker
   for (const lane of LANES) {
     const badge = $(`.card[data-lane="${lane}"] .card-badge`);
@@ -434,7 +436,9 @@ function renderDoc({ force = false, fromServer = false } = {}) {
   const { draft } = state.cur;
   $('#docNum').textContent = LANE[lane].num;
   $('#docName').textContent = LANE[lane].name;
-  $('#docMatter').textContent = `${draft.title} · ${draft.matter_no}`;
+  // which document of the matter this is, when the matter has more than one
+  const many = (state.cur.documents || []).length > 1;
+  $('#docMatter').textContent = `${draft.title}${many ? ` · ${draft.folder ? `${draft.folder} / ` : ''}${draft.docName}` : ''} · ${draft.matter_no}`;
   const ed = editor(), scroller = $('#sheetScroll');
   if (force || !state.dirty) {
     const top = scroller.scrollTop, caret = caretOffset(ed);
@@ -952,6 +956,10 @@ function openStream(draftId) {
   });
   on('deleted', async (d) => {
     if (state.lane) await closeDoc(true);
+    if (d.doc && state.cur?.draft.matterId) { // just this document went: back to the matter's main draft
+      await openMatter(state.cur.draft.matterId);
+      return ledger(`${d.by} deleted that document.`);
+    }
     await loadDrafts();
     state.drafts[0] ? openMatter(state.drafts[0].id) : showEmpty();
     ledger(`${d.by} closed that matter.`);
@@ -1043,7 +1051,7 @@ $('#matterDate').addEventListener('change', async (e) => {
   try {
     await api('PATCH', `/api/drafts/${state.cur.draft.id}`, { matterDate: e.target.value });
     state.cur.draft.matter_date = e.target.value || null;
-    const d = state.drafts.find((x) => x.id === state.cur.draft.id);
+    const d = state.drafts.find((x) => x.id === (state.cur.draft.matterId ?? state.cur.draft.id));
     if (d) d.matter_date = state.cur.draft.matter_date;
     renderDesk();
     renderMatters();

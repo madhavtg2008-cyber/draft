@@ -180,6 +180,10 @@ $('#docToggle').addEventListener('click', async () => {
   $('#docToggle').classList.add('hidden');
   docForm.classList.remove('hidden');
   $('#docTemplate').value = 'blank';
+  // with a matter open, the document goes into that matter; otherwise it starts a new matter
+  const inMatter = !!state.cur;
+  $('#docFormLabel').textContent = inMatter ? `New document in “${state.cur.draft.title}”` : 'New document';
+  $('#docFolder').classList.toggle('hidden', !inMatter);
   docForm.elements.title.focus();
 });
 $('#docCancel').addEventListener('click', closeDocForm);
@@ -187,10 +191,16 @@ docForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const f = docForm.elements;
   try {
-    const { draft } = await api('POST', '/api/drafts', { title: f.title.value, template: f.template.value });
+    let openId;
+    if (state.cur) { // a further document inside the open matter
+      const r = await api('POST', `/api/drafts/${state.cur.draft.id}/documents`, { name: f.title.value, folder: f.folder.value, template: f.template.value });
+      openId = r.document.id;
+    } else {
+      openId = (await api('POST', '/api/drafts', { title: f.title.value, template: f.template.value })).draft.id;
+    }
     closeDocForm();
     await loadDrafts();
-    await openMatter(draft.id);
+    await openMatter(openId);
     history.pushState(null, '', '#team'); // write it in the team draft (the clean draft is uploaded from there)
     await openDoc('team');
     confirmDone('New document created');

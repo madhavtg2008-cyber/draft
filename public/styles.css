@@ -880,3 +880,29 @@ body.role-client .mdate { cursor: default; border-style: solid; }
 .pm-back:hover { opacity: .7; }
 .pm-page { animation: pmIn .25s var(--ease); }
 @keyframes pmIn { from { opacity: 0; transform: translateX(6px); } }
+
+/* ---------- documents inside a matter (by folder) ---------- */
+.doc-strip { display: flex; align-items: center; gap: 14px; margin: -12px 0 18px; animation: rise .6s var(--ease) both; }
+.ds-label { flex: none; font: 600 10px var(--sans); letter-spacing: .22em; text-transform: uppercase; color: var(--ui-dim); }
+.ds-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.ds-doc { position: relative; display: inline-flex; align-items: center; gap: 6px; max-width: 220px; padding: 6px 12px; border: 1px solid var(--line); color: var(--mute);
+  font: 15px var(--body); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: border-color .2s, color .2s, background .2s; }
+.ds-doc:hover { color: var(--chalk); border-color: var(--ui-border); }
+.ds-doc.on { color: var(--night); background: var(--chalk); border-color: var(--chalk); }
+.ds-more { margin-left: 2px; padding: 0 2px; font-weight: 700; opacity: .7; }
+.ds-more:hover { opacity: 1; }
+.ds-folder { display: inline-flex; align-items: center; gap: 6px; padding: 3px 3px 3px 9px; border: 1px dashed var(--line); }
+.ds-folder svg { width: 14px; height: 14px; fill: none; stroke: var(--mute); stroke-width: 1.2; }
+.ds-folder b { font: 600 10.5px var(--sans); letter-spacing: .1em; text-transform: uppercase; color: var(--mute); margin-right: 2px; }
+.ds-new { padding: 6px 12px; border: 1px dashed var(--ui-border); color: var(--mute); font-size: 12px; letter-spacing: .04em; }
+.ds-new:hover { color: var(--chalk); border-color: var(--chalk); }
+.doc-edit { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: -6px 0 18px; padding: 12px 14px; border: 1px solid var(--line); background: var(--night-2); animation: rise .3s var(--ease) both; }
+.doc-edit input, .doc-edit select { background: transparent; border: 0; border-bottom: 1px solid var(--line); padding: 7px 2px; color: var(--chalk); font: 16px var(--body); outline: none; min-width: 180px; }
+.doc-edit input:focus { border-color: var(--chalk); }
+.doc-edit select option { color: #141414; }
+.doc-edit .link { color: var(--mute); font-size: 12px; }
+.de-del { font-size: 12px; color: #e06c75; }
+.de-del.armed { font-weight: 600; text-decoration: underline; }
+.de-error { flex-basis: 100%; color: #e06c75; font-size: 12.5px; }
+.de-error:empty { display: none; }
+@media (max-width: 900px) { .doc-strip { flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 0; } }

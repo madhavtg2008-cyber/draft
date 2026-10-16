@@ -161,6 +161,9 @@ for (const sql of [
   'ALTER TABLE drafts ADD COLUMN firm_id INTEGER',                         // the firm that owns the matter
   'ALTER TABLE users ADD COLUMN tour_done INTEGER NOT NULL DEFAULT 0',     // has seen the first-time tutorial
   'ALTER TABLE drafts ADD COLUMN sample INTEGER NOT NULL DEFAULT 0',       // the sample matter every new firm starts with
+  'ALTER TABLE drafts ADD COLUMN parent_id INTEGER',                       // a further document inside a matter (null = the matter itself)
+  'ALTER TABLE drafts ADD COLUMN folder TEXT',                             // the folder a document sits in, within its matter
+  'ALTER TABLE drafts ADD COLUMN doc_name TEXT',                           // the document's own name (the matter's first one: "Main draft")
 ]) { try { db.exec(sql); } catch { /* already there */ } }
 // Each law firm is its own private workspace with its own Team Head, team, matters and plan.
 db.exec(`CREATE TABLE IF NOT EXISTS firms (
@@ -183,7 +186,7 @@ const CURRENCY = process.env.PLAN_CURRENCY || '₹';
 const getFirm = (id) => (id ? db.prepare('SELECT * FROM firms WHERE id = ?').get(id) : null);
 const planOf = (firm) => PLANS[firm?.plan] || PLANS.free;
 const seatsUsed = (firmId) => db.prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'team' AND disabled = 0 AND firm_id = ?").get(firmId).n;
-const mattersUsed = (firmId) => db.prepare('SELECT COUNT(*) AS n FROM drafts WHERE firm_id = ? AND sample = 0').get(firmId).n; // the sample is free
+const mattersUsed = (firmId) => db.prepare('SELECT COUNT(*) AS n FROM drafts WHERE firm_id = ? AND sample = 0 AND parent_id IS NULL').get(firmId).n; // the sample is free; documents inside a matter don't count
 function createFirm(name) {
   return db.prepare('INSERT INTO firms (name, plan, created_at) VALUES (?,?,?)').run(String(name || 'My firm').trim().slice(0, 80) || 'My firm', 'free', Date.now()).lastInsertRowid;
 }
@@ -588,7 +591,11 @@ const REQUEST_WORDS = { 'promote-team': 'upload the team draft to the clean draf
 function hasAccess(user, draftId) {
   return !!db.prepare('SELECT 1 FROM matter_access WHERE draft_id = ? AND email = ?').get(draftId, String(user.email).toLowerCase());
 }
-function canSeeDraft(user, draft) {
+// A matter can hold several documents. Each extra document is a row whose parent_id is the matter;
+// who may see it, and the matter's details (client, date, status, sharing), always come from the matter.
+const rootOf = (d) => (d?.parent_id ? db.prepare('SELECT * FROM drafts WHERE id = ?').get(d.parent_id) || d : d);
+function canSeeDraft(user, doc) {
+  const draft = rootOf(doc);
   if (!draft || !user) return false;
   // Lawyers see every matter of their own firm (one shared set of documents for the whole team),
   // and never another firm's. Clients see only the matters that are theirs or shared with them.
@@ -603,7 +610,7 @@ function canEditLane(user, draft, lane) {
   // nobody types into the clean draft: it only ever changes when the Team Head uploads the team draft
   if (lane === 'final') return false;
   if (user.role === 'team') return true;
-  return lane === 'client' && canSeeDraft(user, draft) && !['approved', 'executed'].includes(draft.status);
+  return lane === 'client' && canSeeDraft(user, draft) && !['approved', 'executed'].includes(rootOf(draft).status); // the matter's status
 }
 
 function laneInfo(user, draft, lane) {
@@ -789,6 +796,8 @@ function loadDraft(req, res, next) {
   req.draft = draft;
   next();
 }
+// sharing and access belong to the whole matter, whichever of its documents is open
+function toMatter(req, res, next) { req.draft = rootOf(req.draft); next(); }
 function laneParam(req, res, next) {
   const { lane } = req.params;
   if (!LANES.includes(lane) || !canSeeLane(req.user, lane)) return res.status(404).json({ error: 'Unknown lane' });
@@ -864,8 +873,8 @@ app.get('/api/drafts', auth, (req, res) => {
   const own = 'd.created_by = ? OR d.client_id = ? OR EXISTS (SELECT 1 FROM matter_access a WHERE a.draft_id = d.id AND a.email = ?)';
   const me = [req.user.id, req.user.id, String(req.user.email).toLowerCase()];
   const rows = req.user.role === 'team' // the whole team shares the firm's matters
-    ? db.prepare(`${base} WHERE d.firm_id = ? ORDER BY d.updated_at DESC`).all(req.user.firm_id)
-    : db.prepare(`${base} WHERE ${own} ORDER BY d.updated_at DESC`).all(...me);
+    ? db.prepare(`${base} WHERE d.parent_id IS NULL AND d.firm_id = ? ORDER BY d.updated_at DESC`).all(req.user.firm_id)
+    : db.prepare(`${base} WHERE d.parent_id IS NULL AND (${own}) ORDER BY d.updated_at DESC`).all(...me);
   res.json({ drafts: rows });
 });
 
@@ -948,8 +957,14 @@ app.post('/api/convert', auth, express.raw({ type: () => true, limit: '25mb' }),
   }
 });
 
+// the documents in a matter, in the order they were made (the matter's own document first)
+const docName = (d) => d.doc_name || (d.parent_id ? d.title : 'Main draft');
+function matterDocs(rootId) {
+  return db.prepare('SELECT id, title, doc_name, parent_id, folder, updated_at FROM drafts WHERE id = ? OR parent_id = ? ORDER BY (parent_id IS NOT NULL), id').all(rootId, rootId)
+    .map((x) => ({ id: x.id, name: docName(x), folder: x.folder || null, main: !x.parent_id, updated_at: x.updated_at }));
+}
 app.get('/api/drafts/:id', auth, loadDraft, (req, res) => {
-  const d = req.draft;
+  const d = req.draft, m = rootOf(d);
   const lanes = {};
   for (const lane of LANES) if (canSeeLane(req.user, lane)) lanes[lane] = laneInfo(req.user, d, lane);
   const visible = req.user.role === 'team' ? LANES : ['client', 'final'];
@@ -959,17 +974,28 @@ app.get('/api/drafts/:id', auth, loadDraft, (req, res) => {
   const activity = db.prepare(`SELECT a.lane, a.action, a.created_at, u.name AS author FROM activity a LEFT JOIN users u ON u.id = a.author_id
                                WHERE a.draft_id = ? AND (a.lane IS NULL OR a.lane IN (${ph})) ORDER BY a.id DESC LIMIT 40`).all(d.id, ...visible);
   // people this viewer may know about: the firm's team plus this matter's client
-  const people = db.prepare("SELECT * FROM users WHERE (role = 'team' AND firm_id = ?) OR id = ?").all(d.firm_id ?? -1, d.client_id ?? -1).map(publicUser);
+  const people = db.prepare("SELECT * FROM users WHERE (role = 'team' AND firm_id = ?) OR id = ?").all(m.firm_id ?? -1, m.client_id ?? -1).map(publicUser);
   const head = people.find((p) => p.head) || null;
   // open associate requests are internal to the firm
   const requests = req.user.role !== 'team' ? [] : db.prepare(`SELECT r.id, r.kind, r.content, r.created_at, r.requested_by, u.name AS requester, u.color AS requester_color
     FROM requests r JOIN users u ON u.id = r.requested_by WHERE r.draft_id = ? AND r.status = 'pending' ORDER BY r.id`).all(d.id);
-  res.json({ draft: { ...d, page: pageOf(d), client: d.client_id ? publicUser(getUser(d.client_id)) : null }, lanes, comments, activity, people, head, requests, presence: presenceFor(d.id) });
+  // the matter's details, with this document's own id, name, folder and page set-up
+  const draft = { ...m, id: d.id, matterId: m.id, docName: docName(d), folder: d.folder || null, page: pageOf(d), client: m.client_id ? publicUser(getUser(m.client_id)) : null };
+  res.json({ draft, documents: matterDocs(m.id), lanes, comments, activity, people, head, requests, presence: presenceFor(d.id) });
 });
 
 app.patch('/api/drafts/:id', auth, loadDraft, (req, res) => {
   const { status, title } = req.body || {};
-  const d = req.draft;
+  const doc = req.draft, d = rootOf(doc); // matter details live on the matter itself
+  // a document's own name and folder
+  if (req.user.role === 'team' && ('docName' in (req.body || {}) || 'folder' in (req.body || {}))) {
+    if ('docName' in req.body) {
+      const n = String(req.body.docName || '').trim().slice(0, 120);
+      if (!n) return res.status(400).json({ error: 'The document needs a name' });
+      db.prepare('UPDATE drafts SET doc_name = ? WHERE id = ?').run(n, doc.id);
+    }
+    if ('folder' in req.body) db.prepare('UPDATE drafts SET folder = ? WHERE id = ?').run(String(req.body.folder || '').trim().slice(0, 80) || null, doc.id);
+  }
   if ('matterDate' in (req.body || {}) && req.user.role === 'team') {
     const md = String(req.body.matterDate || '');
     if (md && !/^\d{4}-\d{2}-\d{2}$/.test(md)) return res.status(400).json({ error: 'Invalid date' });
@@ -1002,14 +1028,16 @@ app.patch('/api/drafts/:id', auth, loadDraft, (req, res) => {
     }
     db.prepare('UPDATE drafts SET updated_at = ? WHERE id = ?').run(now(), d.id);
   }
-  broadcast(d.id, 'draft', { by: req.user.name });
+  for (const x of matterDocs(d.id)) broadcast(x.id, 'draft', { by: req.user.name });
   res.json({ ok: true });
 });
 
 // Deleting a matter removes everything in it: only the legal team (Team Head and associates) who can see it — never clients.
 app.delete('/api/drafts/:id', auth, teamOnly, loadDraft, (req, res) => {
-  broadcast(req.draft.id, 'deleted', { by: req.user.name });
-  db.prepare('DELETE FROM drafts WHERE id = ?').run(req.draft.id);
+  // a document inside a matter goes on its own; the matter takes all its documents with it
+  const ids = req.draft.parent_id ? [req.draft.id] : matterDocs(req.draft.id).map((x) => x.id);
+  for (const id of ids) broadcast(id, 'deleted', { by: req.user.name, doc: !!req.draft.parent_id });
+  for (const id of ids) db.prepare('DELETE FROM drafts WHERE id = ?').run(id);
   res.json({ ok: true });
 });
 
@@ -1058,9 +1086,9 @@ app.post('/api/drafts/:id/lanes/:lane/changes', auth, confirmerOnly, loadDraft, 
 
 // Upload the team draft to the clean draft. Only ever runs as the Team Head.
 // everyone outside the firm who may see the matter
-function matterClients(draftId) {
-  const d = db.prepare('SELECT * FROM drafts WHERE id = ?').get(draftId);
-  const emails = new Set(db.prepare('SELECT email FROM matter_access WHERE draft_id = ?').all(draftId).map((r) => r.email));
+function matterClients(docId) {
+  const d = rootOf(db.prepare('SELECT * FROM drafts WHERE id = ?').get(docId));
+  const emails = new Set(db.prepare('SELECT email FROM matter_access WHERE draft_id = ?').all(d?.id ?? -1).map((r) => r.email));
   if (d?.client_id) emails.add(getUser(d.client_id)?.email);
   return [...emails].filter(Boolean).map((e) => db.prepare('SELECT * FROM users WHERE email = ?').get(e) || { email: e, role: 'client' })
     .filter((u) => u.role !== 'team');
@@ -1306,6 +1334,26 @@ app.post('/api/drafts/:id/lanes/:lane/new-document', auth, teamOnly, loadDraft, 
   res.json({ lane: laneInfo(req.user, req.draft, lane) });
 });
 
+// a further document inside a matter, optionally in a folder: blank, from a template, or from a dropped file
+app.post('/api/drafts/:id/documents', auth, teamOnly, loadDraft, toMatter, (req, res) => {
+  const m = req.draft;
+  const name = String(req.body?.name || '').trim().slice(0, 120);
+  if (!name) return res.status(400).json({ error: 'Give the document a name' });
+  const folder = String(req.body?.folder || '').trim().slice(0, 80) || null;
+  const t = now();
+  const setup = cleanPage(req.body?.page);
+  const id = db.prepare('INSERT INTO drafts (title, matter_no, client_id, counterparty, page_setup, matter_date, status, created_by, firm_id, parent_id, folder, doc_name, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+    .run(name, m.matter_no, m.client_id, m.counterparty, setup ? JSON.stringify(setup) : null, m.matter_date, m.status, req.user.id, m.firm_id, m.id, folder, name, t, t).lastInsertRowid;
+  const imported = req.body?.contentHtml && clean(req.body.contentHtml).replace(/<[^>]+>/g, '').trim() ? clean(req.body.contentHtml) : null;
+  const tpl = TEMPLATES.some((x) => x.id === req.body?.template) ? req.body.template : 'blank';
+  const body = imported || templateHtml(tpl, draftContext(m, req.user));
+  for (const lane of LANES) initLane(id, lane, body, req.user, imported ? `Imported ${String(req.body.sourceName || 'document').slice(0, 100)}` : 'New document');
+  logActivity(m.id, null, `added the document "${name}"${folder ? ` in ${folder}` : ''}`, req.user.id);
+  db.prepare('UPDATE drafts SET updated_at = ? WHERE id = ?').run(t, m.id);
+  for (const x of matterDocs(m.id)) broadcast(x.id, 'draft', { by: req.user.name });
+  res.json({ document: { id, name, folder }, documents: matterDocs(m.id) });
+});
+
 // ---------- sharing: private links into one matter ----------
 const LINK_DAYS = 30;
 const hashToken = (t) => crypto.createHash('sha256').update(String(t)).digest('hex');
@@ -1330,7 +1378,7 @@ function ensureClient(email, name) {
 }
 
 // who can see this matter
-app.get('/api/drafts/:id/access', auth, teamOnly, loadDraft, (req, res) => {
+app.get('/api/drafts/:id/access', auth, teamOnly, loadDraft, toMatter, (req, res) => {
   const d = req.draft;
   const rows = db.prepare('SELECT email, created_at FROM matter_access WHERE draft_id = ? ORDER BY created_at').all(d.id);
   const people = rows.map((r) => {
@@ -1342,7 +1390,7 @@ app.get('/api/drafts/:id/access', auth, teamOnly, loadDraft, (req, res) => {
 });
 
 // share with someone by email: they get access and a personal link (emailed to them)
-app.post('/api/drafts/:id/share', auth, teamOnly, loadDraft, async (req, res) => {
+app.post('/api/drafts/:id/share', auth, teamOnly, loadDraft, toMatter, async (req, res) => {
   if (isDemoFirm(req.draft.firm_id)) return res.status(403).json({ error: 'This is the shared demo firm — sign up your own firm (free) to invite real people.' });
   const email = String(req.body?.email || '').toLowerCase().trim();
   const name = String(req.body?.name || '').trim().slice(0, 80);
@@ -1376,7 +1424,7 @@ app.post('/api/drafts/:id/share', auth, teamOnly, loadDraft, async (req, res) =>
 });
 
 // stop sharing with someone
-app.delete('/api/drafts/:id/access/:email', auth, teamOnly, loadDraft, (req, res) => {
+app.delete('/api/drafts/:id/access/:email', auth, teamOnly, loadDraft, toMatter, (req, res) => {
   const email = String(req.params.email).toLowerCase();
   db.prepare('DELETE FROM matter_access WHERE draft_id = ? AND email = ?').run(req.draft.id, email);
   db.prepare('DELETE FROM share_links WHERE draft_id = ? AND email = ?').run(req.draft.id, email);
