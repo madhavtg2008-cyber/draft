@@ -838,21 +838,37 @@ window.addEventListener('beforeunload', () => {
 
 // ---------- Save as Word ----------
 // Save as Word / Save as PDF — saves first, so the file always matches the screen
+// On phones the file goes to the phone's own share sheet (Save to Files, WhatsApp, email…), which is
+// the dependable way to hand over a file there; on computers it downloads as usual.
 $$('[data-export]').forEach((btn) => btn.addEventListener('click', async () => {
-  const format = btn.dataset.export;
+  if (btn.classList.contains('busy')) return;
+  const format = btn.dataset.export, kind = format === 'pdf' ? 'PDF' : 'Word';
+  const label = btn.lastChild.textContent;
   btn.classList.add('busy');
+  btn.lastChild.textContent = 'Preparing…';
   try {
     await save();
     const res = await fetch(`/api/drafts/${state.cur.draft.id}/lanes/${state.lane}/${format}`);
-    if (!res.ok) throw new Error(`${format === 'pdf' ? 'PDF' : 'Word'} export failed`);
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `The ${kind} file couldn't be made — please try again`);
     const blob = await res.blob();
     const name = decodeURIComponent((res.headers.get('Content-Disposition') || '').match(/filename\*=UTF-8''([^;]+)/)?.[1] || `draft.${format}`);
+    const file = new File([blob], name, { type: blob.type });
+    if (matchMedia('(hover: none)').matches && navigator.canShare?.({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: name }); confirmDone(`${kind} file ready`); return; }
+      catch (e) { if (e.name === 'AbortError') return; } // closed the share sheet; otherwise fall back to a download
+    }
     const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: name });
     document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+    confirmDone(`Downloaded ${kind} file`);
     setDocState(`Saved ${name}`);
-  } catch (err) { setDocState(err.message); }
-  finally { btn.classList.remove('busy'); }
+  } catch (err) {
+    ledger(err.message);
+    confirmDone(err.message.length < 60 ? err.message : `Couldn't make the ${kind} file`);
+  } finally {
+    btn.classList.remove('busy');
+    btn.lastChild.textContent = label;
+  }
 }));
 
 // ---------- hold-to-confirm ----------
