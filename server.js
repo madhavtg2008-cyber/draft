@@ -1351,14 +1351,22 @@ app.post('/api/drafts/:id/folders', auth, teamOnly, loadDraft, toMatter, (req, r
   db.prepare('UPDATE drafts SET folders = ? WHERE id = ?').run(JSON.stringify([...list, name]), m.id);
   logActivity(m.id, null, `made the folder "${name}"`, req.user.id);
   for (const x of matterDocs(m.id)) broadcast(x.id, 'draft', { by: req.user.name });
-  res.json({ folders: matterFolders(rootOf(m)) });
+  res.json({ folders: matterFolders(db.prepare('SELECT * FROM drafts WHERE id = ?').get(m.id)) });
 });
+// delete a folder and every document in it, for good (the matter's main draft just moves out of it)
 app.delete('/api/drafts/:id/folders/:name', auth, teamOnly, loadDraft, toMatter, (req, res) => {
   const m = req.draft, name = String(req.params.name);
-  if (matterDocs(m.id).some((x) => x.folder === name)) return res.status(400).json({ error: 'Move or delete the documents in this folder first' });
-  db.prepare('UPDATE drafts SET folders = ? WHERE id = ?').run(JSON.stringify(matterFolders(m).filter((f) => f !== name)), m.id);
+  const inside = matterDocs(m.id).filter((x) => x.folder === name);
+  for (const x of inside) {
+    if (x.main) { db.prepare('UPDATE drafts SET folder = NULL WHERE id = ?').run(x.id); continue; }
+    broadcast(x.id, 'deleted', { by: req.user.name, doc: true });
+    db.prepare('DELETE FROM drafts WHERE id = ?').run(x.id);
+  }
+  db.prepare('UPDATE drafts SET folders = ? WHERE id = ?').run(JSON.stringify(matterFolders(rootOf(m)).filter((f) => f !== name)), m.id);
+  const gone = inside.filter((x) => !x.main).length;
+  logActivity(m.id, null, `deleted the folder "${name}"${gone ? ` and its ${gone} document${gone > 1 ? 's' : ''}` : ''}`, req.user.id);
   for (const x of matterDocs(m.id)) broadcast(x.id, 'draft', { by: req.user.name });
-  res.json({ folders: matterFolders(rootOf(m)) });
+  res.json({ folders: matterFolders(db.prepare('SELECT * FROM drafts WHERE id = ?').get(m.id)), deleted: gone });
 });
 
 // a further document inside a matter, optionally in a folder: blank, from a template, or from a dropped file

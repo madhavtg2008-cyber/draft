@@ -929,3 +929,18 @@ button.ex-crumb:hover { color: var(--chalk); }
 .ex-count { font-size: 12px; color: var(--ui-dim); }
 .ex-tile.sel:not(.on) { background: var(--night-3); border-color: var(--chalk); }
 .ex-hint { margin: 6px 2px 0; font-size: 11px; color: var(--ui-dim); }
+/* going into a folder slides the tiles in from the right; leaving slides them back from the left */
+.ex-tiles.slide-in > * { animation: exIn .32s var(--ease) both; }
+.ex-tiles.slide-out > * { animation: exOut .32s var(--ease) both; }
+.ex-tiles.slide-in > *:nth-child(2), .ex-tiles.slide-out > *:nth-child(2) { animation-delay: .03s; }
+.ex-tiles.slide-in > *:nth-child(3), .ex-tiles.slide-out > *:nth-child(3) { animation-delay: .06s; }
+.ex-tiles.slide-in > *:nth-child(4), .ex-tiles.slide-out > *:nth-child(4) { animation-delay: .09s; }
+.ex-tiles.slide-in > *:nth-child(n+5), .ex-tiles.slide-out > *:nth-child(n+5) { animation-delay: .12s; }
+@keyframes exIn { from { opacity: 0; transform: translateX(22px) scale(.96); } }
+@keyframes exOut { from { opacity: 0; transform: translateX(-22px) scale(.96); } }
+.ex-confirm { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin: 0 0 10px; padding: 10px 12px; border: 1px solid #b4474f; background: rgba(180, 71, 79, .12); color: var(--chalk); font-size: 13px; line-height: 1.45; animation: rise .25s var(--ease) both; }
+.ex-confirm-btns { display: flex; align-items: center; gap: 12px; flex: none; }
+.ex-del-yes { padding: 7px 14px; background: #b4474f; color: #fff; font-size: 12px; font-weight: 600; letter-spacing: .04em; }
+.ex-del-yes:hover { background: #9c3a42; }
+.ex-confirm .link { color: var(--mute); font-size: 12px; }
+@media (prefers-reduced-motion: reduce) { .ex-tiles.slide-in > *, .ex-tiles.slide-out > * { animation: none; } }

@@ -10,6 +10,9 @@ let openFolder = null; // the folder being looked into, like double-clicking a f
 let openFolderMatter = null;
 let selected = null; // the tile picked with one click (double-click opens it)
 let exCollapsed = false;
+let confirmFolder = null; // the folder being asked about before it's deleted
+let navDir = null; // 'in' or 'out': which way the tiles slide after opening or leaving a folder
+let escArmed = false; // Esc leaves a folder only right after going in, until you click somewhere else
 try { exCollapsed = localStorage.getItem('zoit_docs_collapsed') === '1'; } catch { /* private mode */ }
 
 // a manila folder and a page with a folded corner, like on any computer
@@ -40,7 +43,7 @@ function renderDocStrip() {
     return `
     <button type="button" class="ex-tile ex-folder${docs.some((d) => d.folder === f && d.id === cur) ? ' holds' : ''}" data-folder="${esc(f)}" title="Open ${esc(f)}">
       ${ICON_FOLDER}<span class="ex-name">${esc(f)}</span><small>${n ? `${n} document${n > 1 ? 's' : ''}` : 'Empty'}</small>
-      ${team && !n ? `<span class="ex-more" data-rm-folder="${esc(f)}" title="Remove this empty folder">×</span>` : ''}
+      ${team ? `<span class="ex-more" data-rm-folder="${esc(f)}" title="Delete this folder">×</span>` : ''}
     </button>`;
   };
   const inside = openFolder ? docs.filter((d) => d.folder === openFolder) : docs.filter((d) => !d.folder);
@@ -60,8 +63,16 @@ function renderDocStrip() {
         ${openFolder ? '' : `<button type="button" class="ex-act" data-new-folder>${ICON_FOLDER}New folder</button>`}
       </div>` : ''}
     </div>
-    ${exCollapsed ? '' : `<div class="ex-tiles">${tiles || '<p class="ex-empty">This folder is empty — add a document to it.</p>'}</div>
-    <p class="ex-hint">Double-click to open${openFolder ? ' · Esc to go back' : ''}</p>`}`;
+    ${confirmFolder !== null && !exCollapsed ? (() => {
+      const n = docs.filter((d) => d.folder === confirmFolder && !d.main).length;
+      return `<div class="ex-confirm" role="alert">
+        <span>Are you sure you want to delete the folder <b>${esc(confirmFolder)}</b>?${n ? ` It will delete all <b>${n} document${n > 1 ? 's' : ''}</b> inside it, and ${n > 1 ? 'they' : 'it'} can't be recovered.` : ' It is empty.'}</span>
+        <span class="ex-confirm-btns"><button type="button" class="ex-del-yes" data-del-folder-yes>Delete folder</button><button type="button" class="link" data-del-folder-no>Cancel</button></span>
+      </div>`;
+    })() : ''}
+    ${exCollapsed ? '' : `<div class="ex-tiles${navDir ? ` slide-${navDir}` : ''}">${tiles || '<p class="ex-empty">This folder is empty — add a document to it.</p>'}</div>
+    <p class="ex-hint">Double-click to open<span class="ex-esc">${openFolder && escArmed ? ' · Esc to go back' : ''}</span></p>`}`;
+  navDir = null;
   docStrip.classList.toggle('collapsed', exCollapsed);
   if (selected) $(`[data-doc="${selected}"], [data-folder="${CSS.escape(String(selected))}"]`, docStrip)?.classList.add('sel');
   $('#folderList').innerHTML = folders.map((f) => `<option value="${esc(f)}">`).join('');
@@ -71,10 +82,17 @@ docStrip.addEventListener('click', async (e) => {
   const more = e.target.closest('[data-edit-doc]');
   if (more) { e.stopPropagation(); return openDocEdit(Number(more.dataset.editDoc)); }
   const rm = e.target.closest('[data-rm-folder]');
-  if (rm) {
-    e.stopPropagation();
-    try { await api('DELETE', `/api/drafts/${state.cur.draft.id}/folders/${encodeURIComponent(rm.dataset.rmFolder)}`); await refresh(); }
-    catch (x) { ledger(x.message); }
+  if (rm) { e.stopPropagation(); confirmFolder = rm.dataset.rmFolder; return renderDocStrip(); } // ask first
+  if (e.target.closest('[data-del-folder-no]')) { confirmFolder = null; return renderDocStrip(); }
+  if (e.target.closest('[data-del-folder-yes]')) {
+    const name = confirmFolder;
+    confirmFolder = null;
+    try {
+      const r = await api('DELETE', `/api/drafts/${state.cur.draft.id}/folders/${encodeURIComponent(name)}`);
+      if (state.cur.draft.folder === name && !state.cur.documents.find((d) => d.id === state.cur.draft.id)?.main) await openMatter(state.cur.draft.matterId);
+      else await refresh();
+      confirmDone(`Deleted folder “${name}”${r.deleted ? ` and ${r.deleted} document${r.deleted > 1 ? 's' : ''}` : ''}`);
+    } catch (x) { ledger(x.message); renderDocStrip(); }
     return;
   }
   if (e.target.closest('[data-new-doc]')) { newDocFolder = openFolder || ''; return openDocEdit('new'); }
@@ -104,11 +122,18 @@ docStrip.addEventListener('keydown', (e) => { // Enter opens the picked tile too
 async function openTile(tile) {
   selected = null;
   closeDocEdit();
-  if (tile.dataset.folder) { openFolder = tile.dataset.folder; return renderDocStrip(); }
+  if (tile.dataset.folder) { openFolder = tile.dataset.folder; navDir = 'in'; escArmed = true; return renderDocStrip(); }
   const id = Number(tile.dataset.doc);
   if (id !== state.cur.draft.id) await openMatter(id); // each document opens onto its own three sheets
 }
-function goUp() { openFolder = null; selected = null; closeDocEdit(); renderDocStrip(); }
+function goUp() { if (openFolder) navDir = 'out'; openFolder = null; selected = null; escArmed = false; closeDocEdit(); renderDocStrip(); }
+// clicking anywhere outside the documents box means you've moved on: Esc no longer leaves the folder
+document.addEventListener('mousedown', (e) => {
+  if (!escArmed || e.target.closest('#docStrip')) return;
+  escArmed = false;
+  const hint = $('.ex-esc', docStrip);
+  if (hint) hint.textContent = '';
+});
 
 // the small inline form under the row: a new document, or rename / move / delete one
 function openDocEdit(which) {
@@ -186,6 +211,7 @@ docEdit.addEventListener('click', async (e) => {
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
   if (docEditing) { e.preventDefault(); return closeDocEdit(); }
+  if (confirmFolder !== null) { e.preventDefault(); confirmFolder = null; return renderDocStrip(); }
   const busy = state.lane || document.querySelector('.share-panel:not(.hidden), .profile-menu:not(.hidden), #teamPanel:not(.hidden), #planPanel:not(.hidden), .tour:not(.hidden), .edit-panel:not(.hidden), #newForm:not(.hidden), #docForm:not(.hidden)');
-  if (openFolder && !busy && !docStrip.classList.contains('hidden')) { e.preventDefault(); goUp(); }
+  if (openFolder && escArmed && !busy && !docStrip.classList.contains('hidden')) { e.preventDefault(); goUp(); }
 });
