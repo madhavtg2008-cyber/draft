@@ -62,8 +62,8 @@
       </form>
       <form id="registerForm" class="auth-form hidden">
         <div class="kind" role="radiogroup" aria-label="I am">
-          <label><input type="radio" name="kind" value="client" checked /><span>I'm a client</span></label>
-          <label><input type="radio" name="kind" value="firm" /><span>I run a law firm</span></label>
+          <label><input type="radio" name="kind" value="client" checked /><span>Client</span></label>
+          <label><input type="radio" name="kind" value="firm" /><span>Law firm</span></label>
         </div>
         <input name="name" required placeholder="Full name" />
         <input name="firmName" class="for-firm" placeholder="Firm name" />
@@ -76,8 +76,8 @@
       <form id="chooseForm" class="auth-form hidden">
         <p class="choose-hi">Welcome, <b id="chooseName"></b>. Who are you joining as?</p>
         <div class="kind" role="radiogroup" aria-label="I am">
-          <label><input type="radio" name="kind" value="client" checked /><span>I'm a client</span></label>
-          <label><input type="radio" name="kind" value="firm" /><span>I run a law firm</span></label>
+          <label><input type="radio" name="kind" value="client" checked /><span>Client</span></label>
+          <label><input type="radio" name="kind" value="firm" /><span>Law firm</span></label>
         </div>
         <input name="firmName" class="for-firm" placeholder="Firm name" />
         <p class="kind-note for-client">You'll see the matters your lawyer shares with you.</p>
@@ -450,6 +450,7 @@
   <div id="confirm" class="confirm" aria-live="polite"><span class="tick">✓</span><b id="confirmText"></b></div>
 
   <script src="/app.js"></script>
+  <script src="/wordpaste.js"></script>
   <script src="/editor.js"></script>
   <script src="/pages.js"></script>
   <script src="/share.js"></script>

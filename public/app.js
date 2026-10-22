@@ -1100,3 +1100,19 @@ $('#railMenu').addEventListener('click', () => setRailOpen(!rail.classList.conta
 // picking a matter (or opening one) closes the menu again
 $('#matterList').addEventListener('click', (e) => { if (e.target.closest('.matter:not(.confirm-del)') && !e.target.closest('[data-del]')) setRailOpen(false); });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && rail.classList.contains('open') && window.innerWidth < 760) setRailOpen(false); });
+
+// a Word paste into an empty document brings Word's page size and margins (see wordpaste.js)
+async function applyPastedPage(page) {
+  if (!state.cur || !state.lane) return;
+  const lane = state.lane;
+  clearTimeout(state.saveTimer);
+  try {
+    const r = await api('PUT', `/api/drafts/${state.cur.draft.id}/lanes/${lane}`, { content: docHtml(), note: 'Pasted from Word', page });
+    state.cur.draft.page = page;
+    state.cur.lanes[lane] = r.lane;
+    state.dirty = false;
+    applyZoom();
+    layoutPages();
+    ledger('Pasted from Word — with Word’s page size and margins.');
+  } catch (err) { ledger(err.message); }
+}

@@ -302,11 +302,18 @@ ed().addEventListener('keydown', (e) => {
 });
 
 // ----- paste from Word or the web: keep the formatting, drop the junk (the server sanitises again)
-ed().addEventListener('paste', (e) => {
+ed().addEventListener('paste', async (e) => {
   const html = e.clipboardData?.getData('text/html');
   if (!html || !ed().isContentEditable) return;
   e.preventDefault();
-  insertHtml(cleanPaste(html));
+  if (!isWordHtml(html)) return insertHtml(cleanPaste(html));
+  // from Microsoft Word: keep every measurement (see wordpaste.js)
+  const empty = !ed().textContent.replace(/\s/g, '').length;
+  const word = fromWord(html);
+  if (empty) ed().innerHTML = '';
+  insertHtml(word.html);
+  // pasted into an empty document: take Word's page size and margins too, so pages break where Word's do
+  if (empty && word.page && typeof applyPastedPage === 'function') await applyPastedPage(word.page);
 });
 function cleanPaste(html) {
   const doc = new DOMParser().parseFromString(html, 'text/html');

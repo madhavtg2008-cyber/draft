@@ -301,6 +301,10 @@ const SANITIZE = {
       'font-style': [/^(italic|normal)$/], 'page-break-after': [/^always$/], width: [CSS_LEN, /^auto$/],
       'vertical-align': [/^(sub|super|baseline|top|middle|bottom)$/], border: [/^[\w\s#.(),%-]+$/],
       'border-collapse': [/^collapse$/], 'list-style-type': [/^[\w-]+$/],
+      // what a paste from Word needs to keep its layout exactly
+      'border-top': [/^[\w\s#.(),%-]+$/], 'border-right': [/^[\w\s#.(),%-]+$/], 'border-bottom': [/^[\w\s#.(),%-]+$/], 'border-left': [/^[\w\s#.(),%-]+$/],
+      padding: [/^(\d+(\.\d+)?(pt|px|em|%)?\s?){1,4}$/], 'padding-top': [CSS_LEN], 'padding-right': [CSS_LEN], 'padding-bottom': [CSS_LEN],
+      'tab-size': [/^\d+(\.\d+)?(pt|px|em)?$/], 'white-space': [/^(pre|pre-wrap|normal)$/],
     },
   },
   allowedSchemes: ['http', 'https', 'mailto'],
@@ -646,8 +650,8 @@ if (!DEMO && db.prepare('SELECT COUNT(*) AS n FROM users').get().n === 0) {
   }
 }
 // The Team Head / Associate / Client demo logins: a separate demo firm anyone can try, created once.
-// On by default (also on the live site); set DEMO_LOGINS=false to remove the buttons.
-const DEMO_LOGINS = process.env.DEMO_LOGINS ? process.env.DEMO_LOGINS === 'true' : true;
+// Off on the live site (set DEMO_LOGINS=true to bring the buttons back); on when running locally for testing.
+const DEMO_LOGINS = process.env.DEMO_LOGINS ? process.env.DEMO_LOGINS === 'true' : false;
 try { // two servers starting at once may race to create them; the loser just skips
 if ((DEMO || DEMO_LOGINS) && !db.prepare('SELECT 1 FROM users WHERE email = ?').get('counsel@lexdraft.test')) {
   const addUser = db.prepare('INSERT INTO users (name, email, role, title, color, head, pass_hash, created_at) VALUES (?,?,?,?,?,?,?,?)');
@@ -788,7 +792,7 @@ function userFromToken(token) {
 }
 function auth(req, res, next) {
   const row = userFromToken(parseCookies(req).lex_session);
-  if (!row) return res.status(401).json({ error: 'Not signed in' });
+  if (!row || (isDemoAccount(row) && !(DEMO || DEMO_LOGINS))) return res.status(401).json({ error: 'Not signed in' }); // demo accounts are off
   req.user = row;
   // remember when they were last here (at most once a minute) for the owner's "using it now"
   if (!row.last_seen || now() - row.last_seen > 60000) db.prepare('UPDATE users SET last_seen = ? WHERE id = ?').run(now(), row.id);
@@ -827,6 +831,8 @@ function startSession(res, userId) {
 app.post('/api/auth/login', (req, res) => {
   const { email, password } = req.body || {};
   const user = db.prepare('SELECT * FROM users WHERE email = ?').get(String(email || '').toLowerCase().trim());
+  // the old public demo accounts can't be used once the demo is switched off
+  if (user && isDemoAccount(user) && !(DEMO || DEMO_LOGINS)) return res.status(401).json({ error: 'Invalid email or password' });
   if (user?.disabled) return res.status(401).json({ error: 'This account has been removed from the firm' });
   if (user?.pass_hash?.startsWith('!')) return res.status(401).json({ error: 'This account signs in with Google — use the Google button' });
   if (user && !user.pass_hash) return res.status(401).json({ error: 'Your lawyer has set up this account — choose your password under "Set up account" to activate it' });
