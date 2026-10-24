@@ -62,7 +62,7 @@ function renderPlans() {
   $('#plUsage').innerHTML = gate
     ? `<p class="pl-intro">Every lawyer at ${esc(f.name)} has their own seat. Choose a plan and pay for your seat to start using Zoit — then add your associates.</p>`
     : `<div><b>${f.activeSeats}</b> paid seat${f.activeSeats === 1 ? '' : 's'}</div>${f.pendingSeats ? `<div><b>${f.pendingSeats}</b> waiting for payment</div>` : ''}<div><b>${rupees(f.total)}</b> per ${plan.cycle}</div>`;
-  // the four plans: Standard / Pro, monthly or yearly — each per lawyer
+  // the plan, monthly or yearly — per lawyer
   const card = (p) => `<button class="pl-opt${p.id === f.plan ? ' on' : ''}" data-plan="${p.id}" ${head ? '' : 'disabled'}>
       <span class="pl-opt-name">${p.name} <small>${p.cycle === 'year' ? 'yearly' : 'monthly'}</small></span>
       <span class="pl-opt-price">${rupees(p.price)}<small> / lawyer / ${p.cycle}</small></span>
