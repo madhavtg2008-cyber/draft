@@ -804,7 +804,7 @@ body.role-client .mdate { cursor: default; border-style: solid; }
 .caption-right { align-self: flex-start; margin-top: -6px; } /* profile and Share matter sit up at the top right */
 
 /* ---------- client / law firm choice ---------- */
-.kind { display: grid; grid-template-columns: repeat(2, 1fr); border: 1px solid var(--line); margin-bottom: 4px; }
+.kind { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--line); margin-bottom: 4px; }
 .kind label { position: relative; cursor: pointer; }
 .kind input { position: absolute; opacity: 0; pointer-events: none; }
 .kind span { display: block; padding: 11px 6px; text-align: center; font-size: 12px; letter-spacing: .08em; color: var(--mute); transition: background .2s, color .2s; }

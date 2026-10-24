@@ -64,11 +64,13 @@
         <div class="kind" role="radiogroup" aria-label="I am">
           <label><input type="radio" name="kind" value="client" checked /><span>Client</span></label>
           <label><input type="radio" name="kind" value="firm" /><span>Law firm</span></label>
+          <label><input type="radio" name="kind" value="associate" /><span>Associate</span></label>
         </div>
         <input name="name" required placeholder="Full name" />
         <input name="firmName" class="for-firm" placeholder="Firm name" />
         <input name="company" class="for-client" placeholder="Company (optional)" />
         <p class="kind-note for-firm">Added by your firm? Use that email and you'll join it.</p>
+        <p class="kind-note for-associate">Your own account. Your Team Head adds this email to bring you into the firm.</p>
         <input name="email" type="email" required placeholder="Email" />
         <input name="password" type="password" minlength="6" required placeholder="Password, 6+ characters" autocomplete="new-password" />
         <button class="btn-primary" type="submit">Create account</button>
@@ -79,10 +81,12 @@
         <div class="kind" role="radiogroup" aria-label="I am">
           <label><input type="radio" name="kind" value="client" checked /><span>Client</span></label>
           <label><input type="radio" name="kind" value="firm" /><span>Law firm</span></label>
+          <label><input type="radio" name="kind" value="associate" /><span>Associate</span></label>
         </div>
         <input name="firmName" class="for-firm" placeholder="Firm name" />
         <p class="kind-note for-client">You'll see the matters your lawyer shares with you.</p>
         <p class="kind-note for-firm">Starting a firm? You'll be its Team Head. Added by your firm? You'll join it.</p>
+        <p class="kind-note for-associate">Your Team Head adds this email to bring you into the firm.</p>
         <button class="btn-primary" type="submit">Continue</button>
         <button class="choose-back" type="button" id="chooseBack">Use a different account</button>
       </form>

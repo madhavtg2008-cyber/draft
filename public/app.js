@@ -176,7 +176,10 @@ async function showApp() {
   $('#meAvatar').textContent = initials(me.name);
   $('#meAvatar').style.setProperty('--c', me.color);
   $('#matterTitle').contentEditable = me.role === 'team' ? 'plaintext-only' : 'false';
-  $('#viewOnly').classList.toggle('hidden', !(me.role === 'team' && !me.head && me.seat === 'pending')); // associate whose seat isn't paid
+  // an associate whose seat isn't paid can look around; one with no firm yet waits to be added
+  $('#viewOnly').classList.toggle('hidden', !(me.role === 'team' && !me.head && me.seat === 'pending'));
+  $('#viewOnly').textContent = me.firm ? "View only — your Team Head hasn't paid for your seat yet. You can look around; editing opens once it's paid."
+    : `You're not in a firm yet. Ask your Team Head to add ${me.email} in their Team panel — you'll see your firm's matters here once they do.`;
   if (me.role === 'team' && me.head && me.seat === 'pending') { showEmpty(); return openPlans(); } // seat not paid yet: Activate Zoit (plans.js)
   await loadDrafts();
   const pick = state.drafts.find((d) => d.id === Number(lsGet('lex_last'))) || state.drafts[0];

@@ -235,7 +235,7 @@ function activateSeat(uid, origin, days) {
     const head = db.prepare('SELECT name FROM users WHERE firm_id = ? AND head = 1').get(u.firm_id);
     sendMail({
       to: u.email, subject: 'You have been added to Zoit',
-      heading: 'Welcome to the team', lines: [`Dear ${u.name},`, `${head?.name || 'Your Team Head'} has added you to ${getFirm(u.firm_id)?.name || 'the firm'} on Zoit.`, 'Open Zoit, choose "Set up account" → "Firm associate", and sign up with this email address (or just continue with Google using it).'],
+      heading: 'Welcome to the team', lines: [`Dear ${u.name},`, `${head?.name || 'Your Team Head'} has added you to ${getFirm(u.firm_id)?.name || 'the firm'} on Zoit.`, u.pass_hash ? 'Your seat is paid — sign in to Zoit and start drafting with your team.' : 'Open Zoit and sign in with this email address — choose "Set up account" if you have not made one yet, or just continue with Google.'],
       button: 'Set up my account', url: origin || process.env.PUBLIC_URL || 'https://zoit.in',
     });
     db.prepare('UPDATE users SET invite_sent = 1 WHERE id = ?').run(uid);
@@ -832,7 +832,7 @@ function auth(req, res, next) {
   // an associate can sign in and look around, but can't change anything
   if (!seatActive(row) && !SEAT_FREE_PATHS.some((p) => req.path === p || req.originalUrl.startsWith(p))) {
     if (!row.head && req.method === 'GET') return next();
-    return res.status(402).json({ error: row.head ? 'Activate your Zoit seat to continue' : VIEW_ONLY, seatPending: true });
+    return res.status(402).json({ error: row.head ? 'Activate your Zoit seat to continue' : row.firm_id ? VIEW_ONLY : NO_FIRM, seatPending: true });
   }
   // remember when they were last here (at most once a minute) for the owner's "using it now"
   if (!row.last_seen || now() - row.last_seen > 60000) db.prepare('UPDATE users SET last_seen = ? WHERE id = ?').run(now(), row.id);
@@ -883,6 +883,10 @@ app.post('/api/auth/login', (req, res) => {
 // a lawyer tries to join their firm before the Team Head has added them
 // an associate added by their Team Head, whose seat hasn't been paid for yet
 const VIEW_ONLY = "View only — your Team Head hasn't paid for your seat yet.";
+const NO_FIRM = "You're not in a firm yet — ask your Team Head to add your email in their Team panel.";
+// an associate's own account, before any firm has added them
+const createAssociate = (name, email, passHash) => db.prepare("INSERT INTO users (name, email, role, title, color, pass_hash, firm_id, seat_status, created_at) VALUES (?,?,'team','Associate',?,?,NULL,'pending',?)")
+  .run(String(name).trim().slice(0, 80), email, nextColor(), passHash, now()).lastInsertRowid;
 app.post('/api/auth/register', (req, res) => {
   const { name, email, password, company } = req.body || {};
   if (!name || !email || !password || password.length < 6) return res.status(400).json({ error: 'Name, email and a 6+ character password are required' });
@@ -899,6 +903,7 @@ app.post('/api/auth/register', (req, res) => {
   // Associates are added by their Team Head.
   const id = req.body?.kind === 'firm'
     ? createHead(name, em, hashPassword(password), req.body?.firmName)
+    : req.body?.kind === 'associate' ? createAssociate(name, em, hashPassword(password))
     : db.prepare('INSERT INTO users (name, email, role, title, color, pass_hash, created_at) VALUES (?,?,?,?,?,?,?)')
       .run(String(name).trim(), em, 'client', company || null, nextColor(), hashPassword(password), now()).lastInsertRowid;
   startSession(res, id);
@@ -1586,6 +1591,10 @@ app.post('/api/team', auth, headOnly, (req, res) => {
   const email = String(req.body?.email || '').toLowerCase().trim();
   if (!name || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return res.status(400).json({ error: 'Enter their name and a valid email' });
   const existing = userByEmail(email);
+  if (existing?.role === 'team' && !existing.disabled && !existing.firm_id) { // made their own account: bring them in
+    db.prepare("UPDATE users SET firm_id = ?, head = 0, seat_status = 'pending', invite_sent = 0 WHERE id = ?").run(req.user.firm_id, existing.id);
+    return res.json({ ok: true, pending: true, id: existing.id, price: planOf(getFirm(req.user.firm_id)).price });
+  }
   if (existing?.role === 'team' && !existing.disabled) return res.status(409).json({ error: existing.firm_id === req.user.firm_id ? 'They are already on the team' : 'That person already belongs to another firm on Zoit' });
   if (existing && existing.role !== 'team') return res.status(409).json({ error: 'That email belongs to a client account' });
   // their seat starts unpaid: no email and no access until the Team Head pays for it
@@ -1639,7 +1648,8 @@ app.post('/api/auth/social-finish', (req, res) => {
   let user = userByEmail(t.email);
   if (!user) {
     const name = String(req.body?.name || t.name || t.email.split('@')[0]).trim().slice(0, 80);
-    if (req.body?.kind === 'firm') {
+    if (req.body?.kind === 'associate') user = getUser(createAssociate(name, t.email, SOCIAL));
+    else if (req.body?.kind === 'firm') {
       const firmName = String(req.body?.firmName || '').trim();
       if (!firmName) return res.status(400).json({ error: "Enter your firm's name" });
       user = getUser(createHead(name, t.email, SOCIAL, firmName));
@@ -1658,6 +1668,7 @@ app.post('/api/auth/social-finish', (req, res) => {
 const PAYMENTS_READY = false;
 app.get('/api/plans', (req, res) => res.json({ plans: Object.values(PLANS), currency: CURRENCY }));
 app.get('/api/billing', auth, teamOnly, (req, res) => {
+  if (!req.user.firm_id) return res.status(404).json({ error: NO_FIRM });
   res.json({ plans: Object.values(PLANS), currency: CURRENCY, firm: firmInfo(req.user), seats: firmSeats(req.user.firm_id), payments: PAYMENTS_READY || DEMO });
 });
 app.post('/api/billing/plan', auth, headOnly, (req, res) => {
