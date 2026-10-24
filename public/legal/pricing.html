@@ -52,13 +52,12 @@
     footer { margin-top: 40px; padding-top: 22px; border-top: 1px solid var(--line); display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: var(--soft); }
     footer a { text-decoration: none; }
     footer a:hover { color: var(--ink); text-decoration: underline; }
-    .plans.two { grid-template-columns: repeat(2, 1fr); max-width: 760px; }
+    .plans.one { grid-template-columns: 1fr; max-width: 420px; }
     .cycle { display: inline-flex; margin-top: 30px; padding: 4px; border: 1px solid var(--line); border-radius: 999px; }
     .cycle button { border: 0; background: none; padding: 8px 18px; border-radius: 999px; font: 500 13px Inter; color: var(--soft); cursor: pointer; }
     .cycle button.on { background: var(--ink); color: #fff; }
     .cycle em { font-style: normal; font-size: 11px; margin-left: 4px; color: var(--gold); }
     @media (max-width: 820px) {
-      .plans.two { grid-template-columns: 1fr; }
       .plans { grid-template-columns: 1fr; }
       .all { grid-template-columns: 1fr; }
       .all ul { grid-template-columns: 1fr; }
@@ -81,9 +80,9 @@
       <button data-cycle="year" type="button">Yearly <em>save ~17%</em></button>
     </div>
 
-    <section class="plans two">
-      <article class="plan">
-        <h2>Standard</h2>
+    <section class="plans one">
+      <article class="plan best">
+        <h2>Zoit</h2>
         <p class="who">Everything a firm needs to draft together</p>
         <div class="price"><b data-month="₹250" data-year="₹2,499">₹250</b><span data-month="/ lawyer / month" data-year="/ lawyer / year">/ lawyer / month</span></div>
         <ul>
@@ -96,18 +95,6 @@
         <a class="go" href="/">Get started</a>
       </article>
 
-      <article class="plan best">
-        <span class="badge">Best value</span>
-        <h2>Pro</h2>
-        <p class="who">For firms that want more from Zoit</p>
-        <div class="price"><b data-month="₹450" data-year="₹4,999">₹450</b><span data-month="/ lawyer / month" data-year="/ lawyer / year">/ lawyer / month</span></div>
-        <ul>
-          <li>Everything in Standard</li>
-          <li>Priority support</li>
-          <li>Early access to new features as they launch</li>
-        </ul>
-        <a class="go" href="/">Get started</a>
-      </article>
     </section>
 
     <section class="all">
@@ -125,7 +112,7 @@
       </ul>
     </section>
 
-    <p class="fine">Sign up as a law firm and pay for your own seat to begin. Add associates from the Team panel — once their seat is paid, their invite email goes out. Switch plans any time from Billing in your profile menu. Prices are per lawyer.</p>
+    <p class="fine">Sign up as a law firm and pay for your own seat to begin. Add associates from the Team panel — they can sign in and look around straight away, and edit once their seat is paid. Switch between monthly and yearly any time from Billing in your profile menu. Prices are per lawyer.</p>
 
     <footer>
       <a href="/">← Back to Zoit</a>

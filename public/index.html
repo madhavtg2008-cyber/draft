@@ -64,12 +64,11 @@
         <div class="kind" role="radiogroup" aria-label="I am">
           <label><input type="radio" name="kind" value="client" checked /><span>Client</span></label>
           <label><input type="radio" name="kind" value="firm" /><span>Law firm</span></label>
-          <label><input type="radio" name="kind" value="member" /><span>Firm associate</span></label>
         </div>
         <input name="name" required placeholder="Full name" />
         <input name="firmName" class="for-firm" placeholder="Firm name" />
         <input name="company" class="for-client" placeholder="Company (optional)" />
-        <p class="kind-note for-member">Use the email your Team Head added to your firm’s team.</p>
+        <p class="kind-note for-firm">Added by your firm? Use that email and you'll join it.</p>
         <input name="email" type="email" required placeholder="Email" />
         <input name="password" type="password" minlength="6" required placeholder="Password, 6+ characters" autocomplete="new-password" />
         <button class="btn-primary" type="submit">Create account</button>
@@ -80,12 +79,10 @@
         <div class="kind" role="radiogroup" aria-label="I am">
           <label><input type="radio" name="kind" value="client" checked /><span>Client</span></label>
           <label><input type="radio" name="kind" value="firm" /><span>Law firm</span></label>
-          <label><input type="radio" name="kind" value="member" /><span>Firm associate</span></label>
         </div>
         <input name="firmName" class="for-firm" placeholder="Firm name" />
         <p class="kind-note for-client">You'll see the matters your lawyer shares with you.</p>
-        <p class="kind-note for-firm">You'll be the Team Head of your firm. Seats are ₹250 per lawyer a month.</p>
-        <p class="kind-note for-member">You’ll join the firm whose Team Head added this email.</p>
+        <p class="kind-note for-firm">Starting a firm? You'll be its Team Head. Added by your firm? You'll join it.</p>
         <button class="btn-primary" type="submit">Continue</button>
         <button class="choose-back" type="button" id="chooseBack">Use a different account</button>
       </form>
@@ -123,6 +120,7 @@
   </section>
 
   <!-- ===================== APP ===================== -->
+  <div id="viewOnly" class="view-only hidden">View only — your Team Head hasn't paid for your seat yet. You can look around; editing opens once it's paid.</div>
   <section id="app" class="app hidden">
     <aside class="rail">
       <div class="rail-brand"><span class="mark sm">§</span>Zoit<button type="button" id="railMenu" class="rail-menu" aria-expanded="false" aria-label="Matters menu"><span id="railMenuLabel">Matters</span><i>☰</i></button></div>

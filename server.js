@@ -185,8 +185,6 @@ const isDemoFirm = (fid) => !!(fid && db.prepare('SELECT demo FROM firms WHERE i
 const PLANS = {
   monthly: { id: 'monthly', name: 'Standard', cycle: 'month', price: 250, days: 30 },
   yearly: { id: 'yearly', name: 'Standard', cycle: 'year', price: 2499, days: 365 },
-  pro_monthly: { id: 'pro_monthly', name: 'Pro', cycle: 'month', price: 450, days: 30, perks: ['Priority support', 'Early access to new features as they launch'] },
-  pro_yearly: { id: 'pro_yearly', name: 'Pro', cycle: 'year', price: 4999, days: 365, perks: ['Priority support', 'Early access to new features as they launch'] },
 };
 const CURRENCY = process.env.PLAN_CURRENCY || '₹';
 const getFirm = (id) => (id ? db.prepare('SELECT * FROM firms WHERE id = ?').get(id) : null);
@@ -792,7 +790,8 @@ const laneChanged = (draftId, lane, user, kind = 'edit') =>
 const app = express();
 app.set('trust proxy', 1); // Render/other hosts sit behind a proxy: use the real https address
 app.use(express.json({ limit: '15mb' })); // room for pasted images
-app.use(express.static(path.join(__dirname, 'public')));
+// pages, scripts and styles are checked for updates on every load, so a new release shows up straight away
+app.use(express.static(path.join(__dirname, 'public'), { setHeaders: (res, file) => { if (/\.(html|js|css)$/.test(file)) res.setHeader('Cache-Control', 'no-cache'); } }));
 
 function parseCookies(req) {
   return Object.fromEntries((req.headers.cookie || '').split(';').filter(Boolean).map((c) => {
@@ -829,9 +828,11 @@ function auth(req, res, next) {
   const row = userFromToken(parseCookies(req).lex_session);
   if (!row || (isDemoAccount(row) && !(DEMO || DEMO_LOGINS))) return res.status(401).json({ error: 'Not signed in' }); // demo accounts are off
   req.user = row;
-  // a Team Head whose seat isn't paid yet can only reach billing (and sign out) until it is
+  // a seat that isn't paid yet: a Team Head can only reach billing (and sign out) until it is;
+  // an associate can sign in and look around, but can't change anything
   if (!seatActive(row) && !SEAT_FREE_PATHS.some((p) => req.path === p || req.originalUrl.startsWith(p))) {
-    return res.status(402).json({ error: 'Activate your Zoit seat to continue', seatPending: true });
+    if (!row.head && req.method === 'GET') return next();
+    return res.status(402).json({ error: row.head ? 'Activate your Zoit seat to continue' : VIEW_ONLY, seatPending: true });
   }
   // remember when they were last here (at most once a minute) for the owner's "using it now"
   if (!row.last_seen || now() - row.last_seen > 60000) db.prepare('UPDATE users SET last_seen = ? WHERE id = ?').run(now(), row.id);
@@ -873,7 +874,6 @@ app.post('/api/auth/login', (req, res) => {
   // the old public demo accounts can't be used once the demo is switched off
   if (user && isDemoAccount(user) && !(DEMO || DEMO_LOGINS)) return res.status(401).json({ error: 'Invalid email or password' });
   if (user?.disabled) return res.status(401).json({ error: 'This account has been removed from the firm' });
-  if (user && user.role === 'team' && !user.head && !seatActive(user)) return res.status(403).json({ error: SEAT_NOT_PAID });
   if (user?.pass_hash?.startsWith('!')) return res.status(401).json({ error: 'This account signs in with Google — use the Google button' });
   if (user && !user.pass_hash) return res.status(401).json({ error: 'Your lawyer has set up this account — choose your password under "Set up account" to activate it' });
   if (!user || !verifyPassword(String(password || ''), user.pass_hash)) return res.status(401).json({ error: 'Invalid email or password' });
@@ -882,27 +882,20 @@ app.post('/api/auth/login', (req, res) => {
 });
 // a lawyer tries to join their firm before the Team Head has added them
 // an associate added by their Team Head, whose seat hasn't been paid for yet
-const SEAT_NOT_PAID = "Your Team Head hasn't activated your seat yet — you'll get an email as soon as they do.";
-const NOT_ADDED = "Your firm hasn't added this email yet — ask your Team Head to add you in the Team panel, then try again.";
+const VIEW_ONLY = "View only — your Team Head hasn't paid for your seat yet.";
 app.post('/api/auth/register', (req, res) => {
   const { name, email, password, company } = req.body || {};
   if (!name || !email || !password || password.length < 6) return res.status(400).json({ error: 'Name, email and a 6+ character password are required' });
   const em = String(email).toLowerCase().trim();
   const existing = db.prepare('SELECT * FROM users WHERE email = ?').get(em);
-  // "Firm associate": only for an email a Team Head has already added to their team
-  if (req.body?.kind === 'member' && !(existing && existing.role === 'team' && !existing.disabled)) {
-    return res.status(403).json({ error: NOT_ADDED });
-  }
-  if (existing?.role === 'team' && existing.pass_hash && req.body?.kind === 'member') return res.status(409).json({ error: 'You already have an account — sign in instead' });
-  if (existing?.role === 'team' && !existing.head && !seatActive(existing)) return res.status(403).json({ error: SEAT_NOT_PAID });
-  if (existing && !existing.pass_hash) { // invited by the firm (client or lawyer): claim it
+  if (existing && !existing.pass_hash) { // added by a firm (a client, or a lawyer its Team Head added): claim it and join
     // a client the firm added with a new matter: claim the account by setting a password
     db.prepare('UPDATE users SET pass_hash = ?, title = COALESCE(title, ?) WHERE id = ?').run(hashPassword(password), company || null, existing.id);
     startSession(res, existing.id);
     return res.json({ user: meUser(getUser(existing.id)) });
   }
   if (existing) return res.status(409).json({ error: 'An account with that email already exists' });
-  // Self-registration: a client, or a new law firm (its founder becomes the Team Head, on the Free plan).
+  // Self-registration: a client, or a new law firm (its founder becomes the Team Head).
   // Associates are added by their Team Head.
   const id = req.body?.kind === 'firm'
     ? createHead(name, em, hashPassword(password), req.body?.firmName)
@@ -1636,7 +1629,6 @@ function readTicket(ticket) {
 function signInVerified(res, email, name) {
   const user = userByEmail(email);
   if (user?.disabled) return res.status(401).json({ error: 'This account has been removed from the firm' });
-  if (user && user.role === 'team' && !user.head && !seatActive(user)) return res.status(403).json({ error: SEAT_NOT_PAID });
   if (!user) return res.json({ choose: true, ticket: makeTicket(email, name), name, email: String(email).toLowerCase() });
   startSession(res, user.id);
   res.json({ user: meUser(user) });
@@ -1647,7 +1639,6 @@ app.post('/api/auth/social-finish', (req, res) => {
   let user = userByEmail(t.email);
   if (!user) {
     const name = String(req.body?.name || t.name || t.email.split('@')[0]).trim().slice(0, 80);
-    if (req.body?.kind === 'member') return res.status(403).json({ error: NOT_ADDED }); // a firm's lawyers are added by their Team Head
     if (req.body?.kind === 'firm') {
       const firmName = String(req.body?.firmName || '').trim();
       if (!firmName) return res.status(400).json({ error: "Enter your firm's name" });

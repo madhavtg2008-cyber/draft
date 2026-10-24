@@ -142,6 +142,7 @@ function showAuth() {
   $('#doc').classList.add('hidden');
   $('#auth').classList.remove('hidden');
   $('#planPanel').classList.add('hidden');
+  $('#viewOnly').classList.add('hidden');
   $('#authError').textContent = '';
   typewriter();
 }
@@ -175,7 +176,8 @@ async function showApp() {
   $('#meAvatar').textContent = initials(me.name);
   $('#meAvatar').style.setProperty('--c', me.color);
   $('#matterTitle').contentEditable = me.role === 'team' ? 'plaintext-only' : 'false';
-  if (me.role === 'team' && me.seat === 'pending') { showEmpty(); return openPlans(); } // seat not paid yet: Activate Zoit (plans.js)
+  $('#viewOnly').classList.toggle('hidden', !(me.role === 'team' && !me.head && me.seat === 'pending')); // associate whose seat isn't paid
+  if (me.role === 'team' && me.head && me.seat === 'pending') { showEmpty(); return openPlans(); } // seat not paid yet: Activate Zoit (plans.js)
   await loadDrafts();
   const pick = state.drafts.find((d) => d.id === Number(lsGet('lex_last'))) || state.drafts[0];
   if (pick) { await openMatter(pick.id); route(); } else showEmpty();
