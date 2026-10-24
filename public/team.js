@@ -63,7 +63,7 @@ $('#tpAdd').addEventListener('submit', async (e) => {
   const f = e.target.elements;
   try {
     await api('POST', '/api/team', { name: f.name.value, email: f.email.value });
-    $('#tpMsg').textContent = `Added. ${f.name.value} gets an email (once email is set up) and sets a password with "Set up account" on the sign-in page.`;
+    $('#tpMsg').textContent = `Added. ${f.name.value} gets an email (once email is set up) and signs up on the sign-in page with "Set up account" → "Join my firm" (or Google) using that email.`;
     e.target.reset();
     loadTeam();
   } catch (err) { $('#tpMsg').textContent = err.message; }

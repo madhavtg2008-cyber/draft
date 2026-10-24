@@ -840,11 +840,18 @@ app.post('/api/auth/login', (req, res) => {
   startSession(res, user.id);
   res.json({ user: meUser(user) });
 });
+// a lawyer tries to join their firm before the Team Head has added them
+const NOT_ADDED = "Your firm hasn't added this email yet — ask your Team Head to add you in the Team panel, then try again.";
 app.post('/api/auth/register', (req, res) => {
   const { name, email, password, company } = req.body || {};
   if (!name || !email || !password || password.length < 6) return res.status(400).json({ error: 'Name, email and a 6+ character password are required' });
   const em = String(email).toLowerCase().trim();
   const existing = db.prepare('SELECT * FROM users WHERE email = ?').get(em);
+  // "Join my firm": only for an email a Team Head has already added to their team
+  if (req.body?.kind === 'member' && !(existing && existing.role === 'team' && !existing.disabled)) {
+    return res.status(403).json({ error: NOT_ADDED });
+  }
+  if (existing?.role === 'team' && existing.pass_hash && req.body?.kind === 'member') return res.status(409).json({ error: 'You already have an account — sign in instead' });
   if (existing && !existing.pass_hash) { // invited by the firm (client or lawyer): claim it
     // a client the firm added with a new matter: claim the account by setting a password
     db.prepare('UPDATE users SET pass_hash = ?, title = COALESCE(title, ?) WHERE id = ?').run(hashPassword(password), company || null, existing.id);
@@ -1561,7 +1568,7 @@ app.post('/api/team', auth, headOnly, (req, res) => {
   }
   if (!isDemoFirm(req.user.firm_id)) sendMail({ // the public demo firm never sends real email
     to: email, subject: 'You have been added to Zoit',
-    heading: 'Welcome to the team', lines: [`Dear ${name},`, `${req.user.name} has added you to the firm's Zoit workspace.`, 'Open Zoit and sign in with Google using this email address — or choose "Set up account" and pick a password.'],
+    heading: 'Welcome to the team', lines: [`Dear ${name},`, `${req.user.name} has added you to the firm's Zoit workspace.`, 'Open Zoit, choose "Set up account" → "Join my firm", and sign up with this email address (or just continue with Google using it).'],
     button: 'Set up my account', url: originOf(req),
   });
   res.json({ ok: true });
@@ -1606,6 +1613,7 @@ app.post('/api/auth/social-finish', (req, res) => {
   let user = userByEmail(t.email);
   if (!user) {
     const name = String(req.body?.name || t.name || t.email.split('@')[0]).trim().slice(0, 80);
+    if (req.body?.kind === 'member') return res.status(403).json({ error: NOT_ADDED }); // a firm's lawyers are added by their Team Head
     if (req.body?.kind === 'firm') {
       const firmName = String(req.body?.firmName || '').trim();
       if (!firmName) return res.status(400).json({ error: "Enter your firm's name" });

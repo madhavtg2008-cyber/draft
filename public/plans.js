@@ -2,10 +2,9 @@
 
 // ---------- the client / law firm choice (email sign-up, and after Google or Apple) ----------
 function syncKind(form) {
-  const firm = form.elements.kind.value === 'firm';
-  form.querySelectorAll('.for-firm').forEach((el) => el.classList.toggle('hidden', !firm));
-  form.querySelectorAll('.for-client').forEach((el) => el.classList.toggle('hidden', firm));
-  if (form.elements.firmName) form.elements.firmName.required = firm;
+  const kind = form.elements.kind.value; // client · firm (new firm) · member (joining their firm)
+  for (const k of ['client', 'firm', 'member']) form.querySelectorAll(`.for-${k}`).forEach((el) => el.classList.toggle('hidden', kind !== k));
+  if (form.elements.firmName) form.elements.firmName.required = kind === 'firm';
 }
 ['#registerForm', '#chooseForm'].forEach((sel) => {
   const form = $(sel);
