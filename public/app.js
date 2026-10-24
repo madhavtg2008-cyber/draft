@@ -24,6 +24,7 @@ const editor = () => $('#editor');
 async function api(method, url, body) {
   const res = await fetch(url, { method, headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined });
   const data = await res.json().catch(() => ({}));
+  if (res.status === 402 && data.seatPending && typeof openPlans === 'function' && state.me?.head) openPlans(); // seat not paid yet (plans.js)
   if (!res.ok) throw Object.assign(new Error(data.error || 'Request failed'), { status: res.status });
   return data;
 }
@@ -119,6 +120,8 @@ const PHRASES = ['Draft with precision.', 'Negotiate in the open.', 'Deliberate 
 let typeTimer;
 function typewriter() {
   const el = $('#typewriter');
+  const ghost = $('.tw-ghost');
+  if (ghost) ghost.textContent = PHRASES.reduce((a, b) => (b.length > a.length ? b : a));
   let pi = 0, ci = 0, del = false;
   clearTimeout(typeTimer);
   const step = () => {
@@ -138,6 +141,7 @@ function showAuth() {
   $('#app').classList.add('hidden');
   $('#doc').classList.add('hidden');
   $('#auth').classList.remove('hidden');
+  $('#planPanel').classList.add('hidden');
   $('#authError').textContent = '';
   typewriter();
 }
@@ -171,6 +175,7 @@ async function showApp() {
   $('#meAvatar').textContent = initials(me.name);
   $('#meAvatar').style.setProperty('--c', me.color);
   $('#matterTitle').contentEditable = me.role === 'team' ? 'plaintext-only' : 'false';
+  if (me.role === 'team' && me.seat === 'pending') { showEmpty(); return openPlans(); } // seat not paid yet: Activate Zoit (plans.js)
   await loadDrafts();
   const pick = state.drafts.find((d) => d.id === Number(lsGet('lex_last'))) || state.drafts[0];
   if (pick) { await openMatter(pick.id); route(); } else showEmpty();

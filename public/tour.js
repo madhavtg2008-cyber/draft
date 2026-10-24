@@ -168,8 +168,8 @@ new MutationObserver(() => {
   let seenDemo = false;
   try { seenDemo = !!sessionStorage.getItem('zoit_demo_tour'); } catch { /* private mode */ }
   if (state.me?.demo && seenDemo) return; // a demo visitor sees it once per visit
-  if ($('#app').classList.contains('hidden') || !state.me || state.me.tourDone || at >= 0) return;
-  setTimeout(() => { if (state.me && !state.me.tourDone && at < 0 && !$('#app').classList.contains('hidden')) startTour(); }, 1100);
+  if ($('#app').classList.contains('hidden') || !state.me || state.me.tourDone || state.me.seat === 'pending' || at >= 0) return;
+  setTimeout(() => { if (state.me && !state.me.tourDone && state.me.seat !== 'pending' && at < 0 && !$('#app').classList.contains('hidden')) startTour(); }, 1100);
 }).observe($('#app'), { attributes: true, attributeFilter: ['class'] });
 
 // replay from the profile menu

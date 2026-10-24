@@ -247,7 +247,7 @@ function fillProfile() {
   $('#pmAdmin').classList.toggle('hidden', !me.owner); // only the site owner
   if (me.firm) {
     $('#pmFirm').textContent = me.firm.name;
-    $('#pmPlanName').textContent = `${me.firm.plan[0].toUpperCase()}${me.firm.plan.slice(1)} plan ›`;
+    $('#pmPlanName').textContent = `${me.firm.planName} · ₹${me.firm.total.toLocaleString('en-IN')}/${me.firm.cycle} ›`;
   }
 }
 new MutationObserver(fillProfile).observe($('#app'), { attributes: true, attributeFilter: ['class'] });

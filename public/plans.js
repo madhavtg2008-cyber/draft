@@ -42,64 +42,91 @@ $('#chooseForm').addEventListener('submit', async (e) => {
 });
 $('#chooseBack').addEventListener('click', endChoose);
 
-// ---------- the plan panel ----------
+// ---------- billing: the firm's plan and every lawyer's seat ----------
+// Every lawyer, the Team Head included, has a paid seat. A Team Head whose own seat isn't paid sees
+// this as a full screen ("Activate Zoit") until it is; associates get their invite once theirs is paid.
 const planPanel = $('#planPanel');
-let planInfo = null;
-const money = (p) => `${planInfo.currency}${p.price}${p.price ? '<small> / month</small>' : ''}`;
+let billing = null;
+const rupees = (n) => `₹${Number(n).toLocaleString('en-IN')}`;
 
+async function loadBilling() {
+  try { billing = await api('GET', '/api/billing'); state.me = (await api('GET', '/api/me')).user; } catch { /* keep what we have */ }
+}
 function renderPlans() {
-  const firm = state.me?.firm;
-  if (!firm || !planInfo) return;
-  const head = isHead();
-  $('#plFirm').textContent = firm.name;
-  $('#plUsage').innerHTML = `
-    <div><b>${firm.seatsUsed}</b> of ${firm.seats} lawyers</div>
-    <div><b>${firm.mattersUsed}</b>${firm.matters ? ` of ${firm.matters}` : ''} matters</div>`;
-  const current = planInfo.plans.find((p) => p.id === firm.plan);
-  $('#plList').innerHTML = planInfo.plans.map((p) => {
-    const on = p.id === firm.plan;
-    const verb = p.price > current.price ? 'Upgrade to' : 'Switch to';
-    return `<div class="pl-card${on ? ' on' : ''}">
-      <div class="pl-top"><span class="pl-name">${p.name}</span>${on ? '<span class="pl-tag">Current plan</span>' : ''}</div>
-      <div class="pl-price">${money(p)}</div>
-      <ul class="pl-points">
-        <li>Up to ${p.seats} lawyers</li>
-        <li>${p.matters ? `${p.matters} matters` : 'Unlimited matters'}</li>
-        <li>Client, clean and team drafts</li>
-        ${p.price ? '<li>Word &amp; PDF export, share links</li>' : ''}
-      </ul>
-      ${!on && head ? `<button class="pl-go" data-plan="${p.id}">${verb} ${p.name}</button>` : ''}
-    </div>`;
-  }).join('');
-  $('#plMsg').textContent = head ? (planInfo.demo ? 'Demo: plan changes apply at once, nothing is charged.' : '') : 'Only the Team Head can change the plan.';
+  if (!billing) return;
+  const head = isHead(), f = billing.firm, gate = state.me?.seat === 'pending';
+  planPanel.classList.toggle('gate', gate);
+  $('#plFirm').textContent = f.name;
+  $('#plTitle').textContent = gate ? 'Activate Zoit' : 'Billing';
+  const plan = billing.plans.find((p) => p.id === f.plan);
+  $('#plUsage').innerHTML = gate
+    ? `<p class="pl-intro">Every lawyer at ${esc(f.name)} has their own seat. Choose a plan and pay for your seat to start using Zoit — then add your associates.</p>`
+    : `<div><b>${f.activeSeats}</b> paid seat${f.activeSeats === 1 ? '' : 's'}</div>${f.pendingSeats ? `<div><b>${f.pendingSeats}</b> waiting for payment</div>` : ''}<div><b>${rupees(f.total)}</b> per ${plan.cycle}</div>`;
+  // the four plans: Standard / Pro, monthly or yearly — each per lawyer
+  const card = (p) => `<button class="pl-opt${p.id === f.plan ? ' on' : ''}" data-plan="${p.id}" ${head ? '' : 'disabled'}>
+      <span class="pl-opt-name">${p.name} <small>${p.cycle === 'year' ? 'yearly' : 'monthly'}</small></span>
+      <span class="pl-opt-price">${rupees(p.price)}<small> / lawyer / ${p.cycle}</small></span>
+      ${p.cycle === 'year' ? `<span class="pl-save">${rupees(p.price / 12 | 0)} a month</span>` : ''}
+    </button>`;
+  const pro = billing.plans.find((p) => p.perks);
+  const seats = billing.seats.map((x) => `<div class="pl-seat">
+      <div><b>${esc(x.name)}${x.id === state.me.id ? ' <small>(you)</small>' : ''}</b><small>${x.head ? 'Team Head' : 'Associate'} · ${esc(x.email)}</small></div>
+      ${x.status === 'active'
+        ? `<span class="pl-state on">Active${x.until ? ` · until ${new Date(x.until).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}</span>`
+        : head ? `<button class="pl-pay" data-pay="${x.id}">Pay ${rupees(plan.price)}${x.head ? '' : ' &amp; send invite'}</button>` : '<span class="pl-state">Waiting for payment</span>'}
+    </div>`).join('');
+  $('#plList').innerHTML = `
+    <div class="pl-label">Plan <small>per lawyer</small></div>
+    <div class="pl-opts">${billing.plans.map(card).join('')}</div>
+    ${pro?.perks ? `<p class="pl-perks">Pro adds: ${pro.perks.join(' · ')}</p>` : ''}
+    <div class="pl-label">${gate ? 'Your seat' : 'Seats'}</div>
+    <div class="pl-seats">${gate ? seats.split('<div class="pl-seat">').filter((x) => x.includes('(you)')).map((x) => '<div class="pl-seat">' + x).join('') : seats}</div>
+    ${gate ? '<button class="pl-out" id="plSignOut" type="button">Sign out</button>' : ''}`;
+  $('#plMsg').textContent = head ? '' : 'Only the Team Head manages billing.';
 }
 async function openPlans() {
   closeProfile();
   if (typeof closeTeam === 'function') closeTeam();
   planPanel.classList.remove('hidden');
-  try {
-    planInfo = planInfo || await api('GET', '/api/plans');
-    state.me = (await api('GET', '/api/me')).user;
-  } catch { /* show what we have */ }
+  await loadBilling();
   renderPlans();
 }
-function closePlans() { planPanel.classList.add('hidden'); $('#plMsg').textContent = ''; }
+function closePlans() {
+  if (state.me?.seat === 'pending') return; // can't skip activation
+  planPanel.classList.add('hidden'); $('#plMsg').textContent = '';
+}
 $('#pmPlan').addEventListener('click', openPlans);
 $('#plClose').addEventListener('click', closePlans);
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !planPanel.classList.contains('hidden')) { e.preventDefault(); closePlans(); } });
 document.addEventListener('mousedown', (e) => {
-  if (!planPanel.classList.contains('hidden') && !e.target.closest('#planPanel') && !e.target.closest('#pmPlan')) closePlans();
+  if (!planPanel.classList.contains('hidden') && !e.target.closest('#planPanel') && !e.target.closest('#pmPlan') && !e.target.closest('#tpList')) closePlans();
 });
 $('#plList').addEventListener('click', async (e) => {
-  const b = e.target.closest('[data-plan]');
-  if (!b) return;
-  b.disabled = true;
+  if (e.target.closest('#plSignOut')) return $('#logoutBtn').click();
+  const opt = e.target.closest('[data-plan]');
+  if (opt && !opt.classList.contains('on')) {
+    try { await api('POST', '/api/billing/plan', { plan: opt.dataset.plan }); await loadBilling(); renderPlans(); fillProfile(); }
+    catch (err) { $('#plMsg').textContent = err.message; }
+    return;
+  }
+  const pay = e.target.closest('[data-pay]');
+  if (pay) await payForSeats([Number(pay.dataset.pay)], pay);
+});
+// pay for one or more seats (also used from the Team panel)
+async function payForSeats(ids, btn) {
+  const wasGate = planPanel.classList.contains('gate');
+  if (btn) { btn.disabled = true; btn.dataset.label = btn.textContent; btn.textContent = 'Paying…'; }
   try {
-    const r = await api('POST', '/api/firm/plan', { plan: b.dataset.plan });
-    if (r.payUrl) { window.open(r.payUrl, '_blank', 'noopener'); $('#plMsg').textContent = 'Finish the payment in the new tab — your plan switches over once it is confirmed.'; b.disabled = false; return; }
+    const r = await api('POST', '/api/billing/pay', { ids });
     state.me = r.user;
+    await loadBilling();
     renderPlans();
     fillProfile();
-    confirmDone(`You're on the ${planInfo.plans.find((p) => p.id === r.user.firm.plan).name} plan`);
-  } catch (err) { $('#plMsg').textContent = err.message; b.disabled = false; }
-});
+    if (typeof loadTeam === 'function') loadTeam();
+    confirmDone('Seat activated');
+    if (wasGate && state.me.seat === 'active') location.reload(); // seat paid: into the app
+  } catch (err) {
+    $('#plMsg').textContent = err.message;
+    if (btn) { btn.disabled = false; btn.textContent = btn.dataset.label; }
+  }
+}

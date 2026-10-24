@@ -45,6 +45,9 @@
     .empty { color: var(--dim); font-style: italic; padding: 12px; }
     .wrap { overflow-x: auto; }
     .note { color: var(--dim); font-size: 12px; margin-top: 26px; }
+    .act { padding: 6px 12px; background: var(--fg); color: var(--bg); border: 0; font: 600 12px Inter, sans-serif; cursor: pointer; white-space: nowrap; }
+    .act.armed { background: var(--accent); color: #111; }
+    .act:disabled { opacity: .6; }
     .gate { max-width: 460px; margin: 18vh auto; text-align: center; color: var(--dim); }
     .gate a { color: var(--fg); }
     @media (max-width: 700px) { h1 { font-size: 28px; } .bar em { display: none; } }
@@ -65,7 +68,7 @@ const ago = (t) => {
   return `${Math.round(s / 86400)} d ago`;
 };
 const date = (t) => new Date(t).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
-const plan = { free: 'Free', team: 'Team · ₹250', firm: 'Firm · ₹450' };
+
 
 async function load() {
   let d;
@@ -79,7 +82,6 @@ async function load() {
   }
   const t = d.totals, tr = d.traffic;
   const max = Math.max(1, ...tr.daily.map((x) => Math.max(x.visitors, x.signups)));
-  const paid = (t.plans.team || 0) * 250 + (t.plans.firm || 0) * 450;
   document.getElementById('main').innerHTML = `
     <header><h1>Zoit<small>OWNER</small></h1><span class="stamp">Updated ${new Date(d.generatedAt).toLocaleTimeString()} · refreshes every 30 seconds</span></header>
 
@@ -116,8 +118,14 @@ async function load() {
       <div class="card"><b>${t.clients}</b><span>clients</span></div>
       <div class="card"><b>${t.matters}</b><span>matters</span></div>
       <div class="card"><b>${t.documents}</b><span>documents</span></div>
-      <div class="card"><b>₹${paid.toLocaleString('en-IN')}</b><span>monthly, if paid plans are paying</span><small>Free ${t.plans.free || 0} · Team ${t.plans.team || 0} · Firm ${t.plans.firm || 0}</small></div>
+      <div class="card"><b>₹${t.monthlyRevenue.toLocaleString('en-IN')}</b><span>coming in per month</span><small>${t.activeSeats} paid seats · yearly plans counted per month</small></div>
     </div>
+
+    <h2>Seats waiting to be activated</h2>
+    <div class="wrap">${d.pendingSeats.length ? `<table><tr><th>Lawyer</th><th>Firm</th><th>Plan</th><th>Added</th><th></th></tr>
+      ${d.pendingSeats.map((u) => `<tr><td>${esc(u.name)}${u.head ? ' <span class="tag team">Team Head</span>' : ''}<small>${esc(u.email)}</small></td><td>${esc(u.firm)}</td><td>${esc(u.plan)}</td><td>${date(u.addedAt)}</td>
+        <td><button class="act" data-activate="${u.id}">Activate</button></td></tr>`).join('')}
+    </table><p class="note" style="margin-top:8px">Activate a seat once its payment has reached you. An associate gets their invite email at that moment.</p>` : '<p class="empty">Nobody is waiting.</p>'}</div>
 
     <h2>Newest sign-ups</h2>
     <div class="wrap">${d.recentSignups.length ? `<table><tr><th>Who</th><th>Role</th><th>Firm</th><th>Joined</th><th>Last seen</th></tr>
@@ -126,11 +134,20 @@ async function load() {
 
     <h2>Firms</h2>
     <div class="wrap">${d.firms.length ? `<table><tr><th>Firm</th><th>Plan</th><th>Lawyers</th><th>Matters</th><th>Started</th><th>Last active</th></tr>
-      ${d.firms.map((f) => `<tr><td>${esc(f.name)}<small>${esc(f.head || '')}</small></td><td><span class="tag ${f.plan !== 'free' ? 'firm' : ''}">${plan[f.plan] || f.plan}</span></td><td>${f.lawyers}</td><td>${f.matters}</td><td>${date(f.createdAt)}</td><td>${ago(f.lastActive)}</td></tr>`).join('')}
+      ${d.firms.map((f) => `<tr><td>${esc(f.name)}<small>${esc(f.head || '')}</small></td><td><span class="tag firm">${esc(f.planName)}</span></td><td>${f.lawyers}</td><td>${f.matters}</td><td>${date(f.createdAt)}</td><td>${ago(f.lastActive)}</td></tr>`).join('')}
     </table>` : '<p class="empty">No firms yet.</p>'}</div>
 
     <p class="note">Demo accounts and sample clients are left out. Visitors are counted anonymously — no addresses are stored. Nobody's documents are shown here.</p>`;
 }
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-activate]');
+  if (!b) return;
+  if (!b.classList.contains('armed')) { b.classList.add('armed'); b.textContent = 'Confirm — payment received?'; setTimeout(() => { if (b.isConnected) { b.classList.remove('armed'); b.textContent = 'Activate'; } }, 4000); return; }
+  b.disabled = true; b.textContent = 'Activating…';
+  const r = await fetch(`/api/admin/seats/${b.dataset.activate}/activate`, { method: 'POST', credentials: 'same-origin' });
+  b.textContent = r.ok ? 'Activated ✓' : 'Failed — try again';
+  if (r.ok) setTimeout(load, 900); else b.disabled = false;
+});
 load();
 setInterval(load, 30000);
 </script>

@@ -50,7 +50,7 @@
     <div class="auth-inner">
       <div class="mark">§</div>
       <div class="wordmark">Zoit</div>
-      <h1 class="auth-line"><span id="typewriter"></span></h1>
+      <h1 class="auth-line"><span class="tw-ghost" aria-hidden="true">Execute with certainty.</span><span id="typewriter"></span></h1>
       <div class="auth-switch">
         <button class="auth-tab active" data-tab="login">Sign in</button>
         <button class="auth-tab" data-tab="register">Set up account</button>
@@ -84,7 +84,7 @@
         </div>
         <input name="firmName" class="for-firm" placeholder="Firm name" />
         <p class="kind-note for-client">You'll see the matters your lawyer shares with you.</p>
-        <p class="kind-note for-firm">You'll be the Team Head of your firm, starting on the Free plan.</p>
+        <p class="kind-note for-firm">You'll be the Team Head of your firm. Seats are ₹250 per lawyer a month.</p>
         <p class="kind-note for-member">You’ll join the firm whose Team Head added this email.</p>
         <button class="btn-primary" type="submit">Continue</button>
         <button class="choose-back" type="button" id="chooseBack">Use a different account</button>
@@ -102,7 +102,7 @@
         <button type="button" data-email="associate@lexdraft.test" data-pw="associate123">Associate</button>
         <button type="button" data-email="client@lexdraft.test" data-pw="client123">Client</button>
       </div>
-      <a class="auth-pricing" href="/pricing">Free to start · Team and Firm plans for growing practices</a>
+      <a class="auth-pricing" href="/pricing">Pricing · ₹250 per lawyer a month</a>
     </div>
   </section>
 
@@ -439,10 +439,10 @@
     <div id="tpList" class="tp-list"></div>
   </aside>
 
-  <!-- Plans: Free, Team, Firm. Only the Team Head changes the plan. -->
-  <aside id="planPanel" class="team-panel plan-panel hidden" aria-label="Plans">
+  <!-- Billing: the plan and every lawyer's seat. Only the Team Head pays. -->
+  <aside id="planPanel" class="team-panel plan-panel hidden" aria-label="Billing">
     <header class="tp-head">
-      <div><div class="tp-kicker" id="plFirm">Your firm</div><h2>Plan</h2></div>
+      <div><div class="tp-kicker" id="plFirm">Your firm</div><h2 id="plTitle">Billing</h2></div>
       <button id="plClose" class="tp-close" title="Close (Esc)">✕</button>
     </header>
     <div id="plUsage" class="pl-usage"></div>
