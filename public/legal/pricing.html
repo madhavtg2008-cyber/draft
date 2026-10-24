@@ -1,41 +1,141 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600&family=EB+Garamond&family=Inter:wght@400;600&display=swap" rel="stylesheet" /><link rel="stylesheet" href="/legal/legal.css" /><title>Pricing · Zoit</title>
-<style>
-  main { max-width: 980px; }
-  .lede { color: var(--dim); max-width: 560px; }
-  .plans { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 34px; }
-  .plan { border: 1px solid var(--line); padding: 24px 22px; display: flex; flex-direction: column; }
-  .plan.mid { border-color: var(--fg); }
-  .plan h3 { margin: 0; font: 600 26px 'Cormorant Garamond', Georgia, serif; }
-  .price { margin: 8px 0 2px; font: 600 40px/1 'Cormorant Garamond', Georgia, serif; }
-  .price small { font: 400 13px Inter, sans-serif; color: var(--dim); }
-  .who { color: var(--dim); font-size: 15px; margin: 0 0 14px; }
-  ul { margin: 0 0 22px; padding: 0; list-style: none; font-size: 15.5px; display: grid; gap: 6px; flex: 1; }
-  li::before { content: '§ '; color: var(--dim); }
-  .go { display: block; text-align: center; padding: 12px; border: 1px solid var(--fg); color: var(--fg); text-decoration: none; font: 600 11px Inter, sans-serif; letter-spacing: .16em; text-transform: uppercase; }
-  .plan.mid .go { background: var(--fg); color: var(--bg); }
-  .fine { margin-top: 26px; color: var(--dim); font-size: 14px; }
-  @media (max-width: 760px) { .plans { grid-template-columns: 1fr; } }
-</style></head><body><main>
-<a class="mark" href="/">§ ZOIT</a>
-<h1>Plans for every practice</h1>
-<p class="lede">Start free. Move up when your team grows. Clients never pay — they join the matters you share with them.</p>
-<div class="plans">
-  <section class="plan">
-    <h3>Free</h3><div class="price">₹0</div><p class="who">For a lawyer trying Zoit</p>
-    <ul><li>Up to 2 lawyers</li><li>5 matters</li><li>Client, clean and team drafts</li><li>Word &amp; PDF import and export</li><li>Unlimited clients</li></ul>
-    <a class="go" href="/">Start free</a>
-  </section>
-  <section class="plan mid">
-    <h3>Team</h3><div class="price">₹250<small> / month</small></div><p class="who">For a team of up to 5</p>
-    <ul><li>Up to 5 lawyers</li><li>Unlimited matters</li><li>Associate permissions</li><li>Private share links with name check</li><li>Email updates to clients</li></ul>
-    <a class="go" href="/">Get started</a>
-  </section>
-  <section class="plan">
-    <h3>Firm</h3><div class="price">₹450<small> / month</small></div><p class="who">For a firm of up to 10</p>
-    <ul><li>Up to 10 lawyers</li><li>Unlimited matters</li><li>Everything in Team</li><li>Priority support</li></ul>
-    <a class="go" href="/">Get started</a>
-  </section>
-</div>
-<p class="fine">Sign up as a law firm, then change your plan any time from your profile menu. Prices are per firm, per month.</p>
-<footer><a href="/privacy">Privacy Policy</a> · <a href="/terms">Terms of Service</a> · <a href="/">Back to Zoit</a></footer>
-</main></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pricing · Zoit</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=EB+Garamond:ital@0;1&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root { --ink: #121212; --soft: #5f5c56; --faint: #8f8b83; --line: #e6e3dc; --bg: #ffffff; --tint: #f7f5f0; --gold: #b8892f; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.6 Inter, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: inherit; }
+
+    /* top bar: brand and the way back */
+    .top { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      padding: 14px clamp(16px, 4vw, 40px); background: rgba(255,255,255,.92); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+    .brand { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; font: 600 12px Inter; letter-spacing: .38em; }
+    .brand i { width: 30px; height: 30px; border: 1px solid var(--ink); border-radius: 50%; display: grid; place-items: center; font: 500 15px 'Cormorant Garamond', serif; font-style: normal; letter-spacing: 0; }
+    .back { display: inline-flex; align-items: center; gap: 8px; padding: 9px 16px; border: 1px solid var(--ink); border-radius: 999px; text-decoration: none;
+      font-size: 13px; font-weight: 500; transition: background .2s, color .2s; }
+    .back:hover { background: var(--ink); color: #fff; }
+
+    main { max-width: 1080px; margin: 0 auto; padding: clamp(36px, 7vw, 72px) clamp(16px, 4vw, 40px) 64px; }
+    .eyebrow { font: 600 11px Inter; letter-spacing: .26em; text-transform: uppercase; color: var(--gold); }
+    h1 { margin: 12px 0 10px; font: 600 clamp(36px, 6vw, 56px)/1.05 'Cormorant Garamond', Georgia, serif; letter-spacing: -.01em; }
+    .lede { margin: 0; max-width: 560px; font: 19px/1.55 'EB Garamond', Georgia, serif; color: var(--soft); }
+
+    .plans { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 44px; align-items: stretch; }
+    .plan { position: relative; display: flex; flex-direction: column; padding: 28px 26px 26px; border: 1px solid var(--line); border-radius: 16px; background: #fff;
+      box-shadow: 0 1px 2px rgba(0,0,0,.03), 0 12px 32px -20px rgba(0,0,0,.18); transition: transform .25s, box-shadow .25s; }
+    .plan:hover { transform: translateY(-3px); box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 22px 44px -22px rgba(0,0,0,.25); }
+    .plan.best { border: 1.5px solid var(--ink); }
+    .badge { position: absolute; top: -12px; left: 26px; padding: 4px 12px; border-radius: 999px; background: var(--ink); color: #fff; font: 600 10.5px Inter; letter-spacing: .14em; text-transform: uppercase; }
+    .plan h2 { margin: 0; font: 600 26px 'Cormorant Garamond', Georgia, serif; }
+    .who { margin: 2px 0 18px; color: var(--soft); font-size: 14px; }
+    .price { display: flex; align-items: baseline; gap: 6px; margin-bottom: 20px; }
+    .price b { font: 600 46px/1 'Cormorant Garamond', Georgia, serif; }
+    .price span { color: var(--faint); font-size: 14px; }
+    ul { list-style: none; margin: 0 0 26px; padding: 0; display: grid; gap: 10px; flex: 1; align-content: start; font-size: 14.5px; }
+    li { display: flex; gap: 10px; align-items: flex-start; }
+    li::before { content: ''; flex: none; width: 18px; height: 18px; margin-top: 2px; border-radius: 50%; background: var(--tint) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 8.5l2.5 2.5L12 5.5' fill='none' stroke='%23121212' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/12px no-repeat; }
+    .go { display: block; padding: 13px; border-radius: 10px; text-align: center; text-decoration: none; font-size: 14px; font-weight: 600; border: 1px solid var(--ink); transition: background .2s, color .2s; }
+    .go:hover { background: var(--ink); color: #fff; }
+    .best .go { background: var(--ink); color: #fff; }
+    .best .go:hover { background: #000; }
+
+    .all { margin-top: 52px; padding: 28px; border-radius: 16px; background: var(--tint); display: grid; grid-template-columns: 1fr 2fr; gap: 24px; }
+    .all h3 { margin: 0; font: 600 24px 'Cormorant Garamond', Georgia, serif; }
+    .all p { margin: 6px 0 0; color: var(--soft); font-size: 14px; }
+    .all ul { grid-template-columns: repeat(2, 1fr); margin: 0; }
+    .fine { margin-top: 28px; color: var(--faint); font-size: 13px; }
+    footer { margin-top: 40px; padding-top: 22px; border-top: 1px solid var(--line); display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: var(--soft); }
+    footer a { text-decoration: none; }
+    footer a:hover { color: var(--ink); text-decoration: underline; }
+    @media (max-width: 820px) {
+      .plans { grid-template-columns: 1fr; }
+      .all { grid-template-columns: 1fr; }
+      .all ul { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="/"><i>§</i>ZOIT</a>
+    <a class="back" href="/">← Back to Zoit</a>
+  </header>
+
+  <main>
+    <div class="eyebrow">Pricing</div>
+    <h1>Simple plans for every practice</h1>
+    <p class="lede">Start free and move up as your team grows. Clients never pay — they join the matters you share with them.</p>
+
+    <section class="plans">
+      <article class="plan">
+        <h2>Free</h2>
+        <p class="who">For a lawyer getting started</p>
+        <div class="price"><b>₹0</b><span>forever</span></div>
+        <ul>
+          <li>Up to 2 lawyers</li>
+          <li>5 matters</li>
+          <li>Client, clean and team drafts</li>
+          <li>Word &amp; PDF import and export</li>
+          <li>Unlimited clients</li>
+        </ul>
+        <a class="go" href="/">Start free</a>
+      </article>
+
+      <article class="plan best">
+        <span class="badge">Most popular</span>
+        <h2>Team</h2>
+        <p class="who">For a team of up to 5</p>
+        <div class="price"><b>₹250</b><span>/ month</span></div>
+        <ul>
+          <li>Up to 5 lawyers</li>
+          <li>Unlimited matters</li>
+          <li>Documents &amp; folders in every matter</li>
+          <li>Associate permissions</li>
+          <li>Email invites &amp; updates to clients</li>
+        </ul>
+        <a class="go" href="/">Get started</a>
+      </article>
+
+      <article class="plan">
+        <h2>Firm</h2>
+        <p class="who">For a firm of up to 10</p>
+        <div class="price"><b>₹450</b><span>/ month</span></div>
+        <ul>
+          <li>Up to 10 lawyers</li>
+          <li>Unlimited matters</li>
+          <li>Everything in Team</li>
+          <li>Priority support</li>
+        </ul>
+        <a class="go" href="/">Get started</a>
+      </article>
+    </section>
+
+    <section class="all">
+      <div>
+        <h3>Every plan includes</h3>
+        <p>The full drafting room, from the first page.</p>
+      </div>
+      <ul>
+        <li>Tracked changes the Team Head confirms</li>
+        <li>Private, name-checked share links</li>
+        <li>Remarks beside the text</li>
+        <li>Full version history</li>
+        <li>Google sign-in</li>
+        <li>Works on phones</li>
+      </ul>
+    </section>
+
+    <p class="fine">Sign up as a law firm, then change your plan any time from your profile menu. Prices are per firm, per month.</p>
+
+    <footer>
+      <a href="/">← Back to Zoit</a>
+      <a href="/privacy">Privacy Policy</a>
+      <a href="/terms">Terms of Service</a>
+    </footer>
+  </main>
+</body>
+</html>

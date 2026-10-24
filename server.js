@@ -847,7 +847,7 @@ app.post('/api/auth/register', (req, res) => {
   if (!name || !email || !password || password.length < 6) return res.status(400).json({ error: 'Name, email and a 6+ character password are required' });
   const em = String(email).toLowerCase().trim();
   const existing = db.prepare('SELECT * FROM users WHERE email = ?').get(em);
-  // "Join my firm": only for an email a Team Head has already added to their team
+  // "Firm associate": only for an email a Team Head has already added to their team
   if (req.body?.kind === 'member' && !(existing && existing.role === 'team' && !existing.disabled)) {
     return res.status(403).json({ error: NOT_ADDED });
   }
@@ -1568,7 +1568,7 @@ app.post('/api/team', auth, headOnly, (req, res) => {
   }
   if (!isDemoFirm(req.user.firm_id)) sendMail({ // the public demo firm never sends real email
     to: email, subject: 'You have been added to Zoit',
-    heading: 'Welcome to the team', lines: [`Dear ${name},`, `${req.user.name} has added you to the firm's Zoit workspace.`, 'Open Zoit, choose "Set up account" → "Join my firm", and sign up with this email address (or just continue with Google using it).'],
+    heading: 'Welcome to the team', lines: [`Dear ${name},`, `${req.user.name} has added you to the firm's Zoit workspace.`, 'Open Zoit, choose "Set up account" → "Firm associate", and sign up with this email address (or just continue with Google using it).'],
     button: 'Set up my account', url: originOf(req),
   });
   res.json({ ok: true });
