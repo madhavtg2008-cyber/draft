@@ -647,7 +647,7 @@ function canSeeLane(user, lane) { return lane !== 'team' || user.role === 'team'
 function canEditLane(user, draft, lane) {
   // nobody types into the clean draft: it only ever changes when the Team Head uploads the team draft
   if (lane === 'final') return false;
-  if (user.role === 'team') return true;
+  if (user.role === 'team') return !(draft.parent_id && lockedForAssociate(user, draft)); // a document the Team Head made is theirs to change
   return lane === 'client' && canSeeDraft(user, draft) && !['approved', 'executed'].includes(rootOf(draft).status); // the matter's status
 }
 
@@ -840,6 +840,11 @@ function auth(req, res, next) {
 }
 const teamOnly = (req, res, next) => (req.user.role === 'team' ? next() : res.status(403).json({ error: 'Legal team only' }));
 const headOnly = (req, res, next) => (req.user.head ? next() : res.status(403).json({ error: 'Only the Team Head can do this' }));
+// Associates never delete matters, documents or folders, and can't change a document or matter the
+// Team Head made (they still work in a matter's three sheets, where the Head confirms their edits).
+const headMade = (d) => !!(d?.created_by && getUser(d.created_by)?.head);
+const lockedForAssociate = (user, d) => user.role === 'team' && !user.head && headMade(d);
+const HEAD_ITEM = 'Only the Team Head can change what the Team Head made';
 const confirmerOnly = (req, res, next) => (canConfirm(req.user) ? next() : res.status(403).json({ error: 'Only the Team Head (or an associate they allow) can confirm changes' }));
 function loadDraft(req, res, next) {
   const draft = db.prepare('SELECT * FROM drafts WHERE id = ?').get(Number(req.params.id));
@@ -1017,8 +1022,8 @@ app.post('/api/convert', auth, express.raw({ type: () => true, limit: '25mb' }),
 // the documents in a matter, in the order they were made (the matter's own document first)
 const docName = (d) => d.doc_name || (d.parent_id ? d.title : 'Main draft');
 function matterDocs(rootId) {
-  return db.prepare('SELECT id, title, doc_name, parent_id, folder, updated_at FROM drafts WHERE id = ? OR parent_id = ? ORDER BY (parent_id IS NOT NULL), id').all(rootId, rootId)
-    .map((x) => ({ id: x.id, name: docName(x), folder: x.folder || null, main: !x.parent_id, updated_at: x.updated_at }));
+  return db.prepare('SELECT id, title, doc_name, parent_id, folder, created_by, updated_at FROM drafts WHERE id = ? OR parent_id = ? ORDER BY (parent_id IS NOT NULL), id').all(rootId, rootId)
+    .map((x) => ({ id: x.id, name: docName(x), folder: x.folder || null, main: !x.parent_id, headMade: headMade(x), updated_at: x.updated_at }));
 }
 // a matter's folders: the ones made on purpose (even if still empty) plus any its documents are in
 function matterFolders(m) {
@@ -1044,13 +1049,16 @@ app.get('/api/drafts/:id', auth, loadDraft, (req, res) => {
   const requests = req.user.role !== 'team' ? [] : db.prepare(`SELECT r.id, r.kind, r.content, r.created_at, r.requested_by, u.name AS requester, u.color AS requester_color
     FROM requests r JOIN users u ON u.id = r.requested_by WHERE r.draft_id = ? AND r.status = 'pending' ORDER BY r.id`).all(d.id);
   // the matter's details, with this document's own id, name, folder and page set-up
-  const draft = { ...m, id: d.id, matterId: m.id, docName: docName(d), folder: d.folder || null, page: pageOf(d), client: m.client_id ? publicUser(getUser(m.client_id)) : null };
+  const draft = { ...m, id: d.id, matterId: m.id, docName: docName(d), folder: d.folder || null, headMade: headMade(m), page: pageOf(d), client: m.client_id ? publicUser(getUser(m.client_id)) : null };
   res.json({ draft, documents: matterDocs(m.id), folders: matterFolders(m), lanes, comments, activity, people, head, requests, presence: presenceFor(d.id) });
 });
 
 app.patch('/api/drafts/:id', auth, loadDraft, (req, res) => {
   const { status, title } = req.body || {};
   const doc = req.draft, d = rootOf(doc); // matter details live on the matter itself
+  const b = req.body || {};
+  if (('docName' in b || 'folder' in b) && lockedForAssociate(req.user, doc)) return res.status(403).json({ error: HEAD_ITEM });
+  if (['title', 'counterparty', 'clientId', 'matterDate', 'status'].some((k) => k in b) && lockedForAssociate(req.user, d)) return res.status(403).json({ error: HEAD_ITEM });
   // a document's own name and folder
   if (req.user.role === 'team' && ('docName' in (req.body || {}) || 'folder' in (req.body || {}))) {
     if ('docName' in req.body) {
@@ -1096,8 +1104,8 @@ app.patch('/api/drafts/:id', auth, loadDraft, (req, res) => {
   res.json({ ok: true });
 });
 
-// Deleting a matter removes everything in it: only the legal team (Team Head and associates) who can see it — never clients.
-app.delete('/api/drafts/:id', auth, teamOnly, loadDraft, (req, res) => {
+// Deleting a matter removes everything in it: only the Team Head can do it — never associates or clients.
+app.delete('/api/drafts/:id', auth, headOnly, loadDraft, (req, res) => {
   // a document inside a matter goes on its own; the matter takes all its documents with it
   const ids = req.draft.parent_id ? [req.draft.id] : matterDocs(req.draft.id).map((x) => x.id);
   for (const id of ids) broadcast(id, 'deleted', { by: req.user.name, doc: !!req.draft.parent_id });
@@ -1391,6 +1399,7 @@ app.get('/api/templates', auth, teamOnly, (req, res) => res.json({ templates: TE
 app.post('/api/drafts/:id/lanes/:lane/new-document', auth, teamOnly, loadDraft, laneParam, (req, res) => {
   const { lane } = req.params;
   if (lane !== 'team') return res.status(400).json({ error: 'New documents are started in the team draft' });
+  if (!canEditLane(req.user, req.draft, lane)) return res.status(403).json({ error: HEAD_ITEM });
   const tpl = TEMPLATES.find((x) => x.id === req.body?.template) || TEMPLATES[0];
   saveLane(req.draft.id, lane, templateHtml(tpl.id, draftContext(req.draft, req.user)), req.user, `New document: ${tpl.name}`, true);
   logActivity(req.draft.id, lane, `started a new document (${tpl.name.toLowerCase()})`, req.user.id);
@@ -1410,7 +1419,7 @@ app.post('/api/drafts/:id/folders', auth, teamOnly, loadDraft, toMatter, (req, r
   res.json({ folders: matterFolders(db.prepare('SELECT * FROM drafts WHERE id = ?').get(m.id)) });
 });
 // delete a folder and every document in it, for good (the matter's main draft just moves out of it)
-app.delete('/api/drafts/:id/folders/:name', auth, teamOnly, loadDraft, toMatter, (req, res) => {
+app.delete('/api/drafts/:id/folders/:name', auth, headOnly, loadDraft, toMatter, (req, res) => {
   const m = req.draft, name = String(req.params.name);
   const inside = matterDocs(m.id).filter((x) => x.folder === name);
   for (const x of inside) {

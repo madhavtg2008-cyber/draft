@@ -1,7 +1,8 @@
 // ================= Zoit — documents inside a matter, in folders =================
 // A matter can hold several documents (the main draft, a side letter, a board resolution…), grouped
 // into folders. Each document has its own client, clean and team sheets; sharing and the matter's
-// details stay with the matter. The legal team adds, renames, moves and deletes documents.
+// details stay with the matter. The legal team adds, renames and moves documents; only the Team Head
+// deletes them, and associates can't change anything the Team Head made.
 
 const docStrip = $('#docStrip'), docEdit = $('#docEdit');
 let docEditing = null; // 'new' | 'folder' | a document id | null
@@ -37,14 +38,14 @@ function renderDocStrip() {
   const docTile = (d) => `
     <button type="button" class="ex-tile ex-doc${d.id === cur ? ' on' : ''}" data-doc="${d.id}" title="${esc(d.name)}">
       ${ICON_DOC}<span class="ex-name">${esc(d.name)}</span>
-      ${team && d.id === cur ? `<span class="ex-more" data-edit-doc="${d.id}" title="Rename, move or delete">⋯</span>` : ''}
+      ${team && d.id === cur && (isHead() || !d.headMade) ? `<span class="ex-more" data-edit-doc="${d.id}" title="Rename, move or delete">⋯</span>` : ''}
     </button>`;
   const folderTile = (f) => {
     const n = docs.filter((d) => d.folder === f).length;
     return `
     <button type="button" class="ex-tile ex-folder${docs.some((d) => d.folder === f && d.id === cur) ? ' holds' : ''}" data-folder="${esc(f)}" title="Open ${esc(f)}">
       ${ICON_FOLDER}<span class="ex-name">${esc(f)}</span><small>${n ? `${n} document${n > 1 ? 's' : ''}` : 'Empty'}</small>
-      ${team ? `<span class="ex-more" data-rm-folder="${esc(f)}" title="Delete this folder">×</span>` : ''}
+      ${isHead() ? `<span class="ex-more" data-rm-folder="${esc(f)}" title="Delete this folder">×</span>` : ''}
     </button>`;
   };
   const inside = openFolder ? docs.filter((d) => d.folder === openFolder) : docs.filter((d) => !d.folder);
@@ -168,7 +169,7 @@ function openDocEdit(which) {
     <input name="folder" maxlength="80" list="folderList" placeholder="Folder (optional)" value="${esc(d ? (d.folder || '') : newDocFolder)}" />
     ${which === 'new' && tpl ? `<select name="template">${tpl}</select>` : ''}
     <button class="btn-primary sm" type="submit">${which === 'new' ? 'Add document' : 'Save'}</button>
-    ${d && !d.main ? '<button type="button" class="de-del" data-del-doc>Delete</button>' : ''}
+    ${d && !d.main && isHead() ? '<button type="button" class="de-del" data-del-doc>Delete</button>' : ''}
     <button type="button" class="link" data-cancel-doc>Cancel</button>
     <span class="de-error"></span>`;
   docEdit.classList.remove('hidden');

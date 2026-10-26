@@ -213,7 +213,7 @@ function renderMatters() {
     </div>` : `
     <div class="matter ${(state.cur?.draft.matterId ?? state.cur?.draft.id) === d.id ? 'on' : ''}" data-id="${d.id}" role="button" tabindex="0">
       <b>${esc(d.title)}</b><small>${esc(d.matter_no)} · ${esc(statusLabel(d.status))}${d.matter_date ? ` · ${fmtMatterDate(d.matter_date)}` : ''}</small>
-      ${team ? `<span class="m-trash" data-del="${d.id}" role="button" title="Delete this matter"><svg viewBox="0 0 16 16"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5M7 7v4M9 7v4"/></svg></span>` : ''}
+      ${isHead() ? `<span class="m-trash" data-del="${d.id}" role="button" title="Delete this matter"><svg viewBox="0 0 16 16"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5M7 7v4M9 7v4"/></svg></span>` : ''}
     </div>`).join('') || '<p class="rail-label">None yet</p>';
 }
 async function deleteMatter(id) {
@@ -308,6 +308,8 @@ async function openMatter(id) {
   catch (err) { ledger(err.message); return showEmpty(); }
   const switching = state.cur?.draft.id !== id;
   state.cur = data;
+  // associates can't rename a matter the Team Head made
+  $('#matterTitle').contentEditable = state.me.role === 'team' && (isHead() || !data.draft.headMade) ? 'plaintext-only' : 'false';
   lsSet('lex_last', id);
   $('#emptyState').classList.add('hidden');
   const ws = $('#workspace');
