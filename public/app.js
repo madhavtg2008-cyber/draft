@@ -444,13 +444,18 @@ document.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); save(); }
 });
 
-// ---------- Review: tracked changes shown right in the document ----------
-const reviewOn = () => state.lane && state.lane !== 'final' && lsGet('lex_review') !== '0';
+// ---------- Review (as in Word): tracked changes shown right in the document ----------
+// The markup is always in the page; the display (All Markup, Simple Markup, No Markup, Original)
+// only changes how it looks. Saving strips it (see docHtml), so it never becomes part of the text.
+const reviewOn = () => !!state.lane && state.lane !== 'final';
+const markupMode = () => lsGet('lex_markup') || 'all';
+const whenShort = (t) => (new Date(t).toDateString() === new Date().toDateString() ? clock(t) : `${new Date(t).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} ${clock(t)}`);
 function reviewHtml(info) {
   return info.segments.map((s) => {
     if (s.k === 'eq') return s.t;
     const p = person(s.by), ins = s.k === 'ins';
-    const tip = esc(`${p.name} ${ins ? 'added' : 'deleted'} this`);
+    const tip = esc(`${p.name}${s.at ? `, ${whenShort(s.at)}` : ''}
+${ins ? 'Inserted' : 'Deleted'}`);
     return s.t.split(/(<[^>]*>)/).map((piece) => {
       if (!piece) return '';
       if (piece.startsWith('<')) return ins ? piece : ''; // deleted paragraph breaks aren't shown as breaks
@@ -475,6 +480,7 @@ function renderDoc({ force = false, fromServer = false } = {}) {
     const top = scroller.scrollTop, caret = caretOffset(ed);
     // Review (like Word's track changes): every waiting change stays marked in its author's colour
     const shown = reviewOn() && info.pending ? reviewHtml(info) : info.content;
+    ed.dataset.markup = markupMode(); // how the markup looks: all · simple · none · original
     if (force || state.shown !== shown) {
       ed.innerHTML = shown;
       state.shown = shown;
@@ -484,12 +490,12 @@ function renderDoc({ force = false, fromServer = false } = {}) {
     }
     scroller.scrollTop = force ? 0 : top;
   }
-  ed.contentEditable = info.editable ? 'true' : 'false';
+  ed.contentEditable = info.editable && markupMode() !== 'original' ? 'true' : 'false'; // "Original" is for reading
   $('#tabChanges').textContent = info.pending || '';
   $('#tabChanges').classList.toggle('alert', info.pending > 0 && canConfirmMe());
   const clean = lane === 'final';
   $('#page').classList.toggle('no-margin', clean);
-  $('#docTabs [data-view="changes"]').classList.toggle('hidden', clean);
+  $('#docTabs [data-view="changes"]').classList.add('hidden'); // changes are reviewed in the page itself (Review menu)
   if (clean && state.view === 'changes') state.view = 'text';
   if (!state.dirty) idleState();
   renderActions();
@@ -542,7 +548,7 @@ function renderActions() {
 const REQUEST_WORDS = { 'promote-team': 'upload the team draft to the clean draft' };
 $('#docActions').addEventListener('click', async (e) => {
   const g = e.target.closest('[data-goto]');
-  if (g) return setView(g.dataset.goto);
+  if (g) { if (g.dataset.goto === 'changes') { setView('text'); showMenu('review'); return reviewGo(1); } return setView(g.dataset.goto); } // "review": Review menu, first change
   const p = e.target.closest('[data-preview]');
   if (p) { state.preview = Number(p.dataset.preview); return setView('changes'); }
   const d = e.target.closest('[data-decline], [data-withdraw]');

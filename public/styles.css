@@ -1198,3 +1198,95 @@ body.role-client .desk { grid-template-columns: repeat(2, minmax(0, 340px)); jus
 .doc-bar .doc-id b { overflow: hidden; text-overflow: ellipsis; }
 .doc-bar .doc-tabs { flex: none; }
 @media (max-width: 1180px) { .doc-bar #docState { display: none; } .doc-bar { gap: 14px; } .doc-right { gap: 10px; } }
+
+/* ================= the document screen, clean and light, laid out like Word ================= */
+#doc { --night: #f1f1ef; --night-2: #ffffff; --night-3: #ecebe7; --line: #e3e1db; --chalk: #1a1a1a; --mute: #6c6963;
+  --ui-raise: #ffffff; --ui-border: #d9d6cf; --ui-dim: #8f8c85; --ui-soft: #3e3c38; background: #f1f1ef; color: #1a1a1a; }
+#doc .doc-bar { height: 52px; background: #fff; border-bottom: 1px solid #ecebe7; }
+#doc .doc-id b { font-size: 18px; }
+#doc .back { color: #3e3c38; }
+/* the menu */
+.menu-bar { flex: none; display: flex; align-items: stretch; gap: 2px; height: 36px; padding: 0 14px; background: #fff; border-bottom: 1px solid #ecebe7; overflow-x: auto; scrollbar-width: none; }
+.menu-bar button { padding: 0 11px; font: 500 13px var(--sans); color: #3e3c38; white-space: nowrap; border-radius: 4px 4px 0 0; transition: background .15s, color .15s; }
+.menu-bar button:hover { background: #f4f3f0; color: #000; }
+.menu-bar button.on { color: #000; box-shadow: inset 0 -2px 0 #1a1a1a; font-weight: 600; }
+/* one row of tools, for the chosen menu */
+#doc .toolbar, #doc .toolbar.collapsed, #doc .toolbar.off { display: flex; flex-wrap: wrap; justify-content: flex-start; align-items: center; gap: 6px 4px; min-height: 46px; padding: 7px 14px; background: #fff; border-bottom: 1px solid #e3e1db; }
+#doc .toolbar .tg { display: none; align-items: center; gap: 2px; padding: 0 8px 0 4px; border-right: 1px solid #ecebe7; }
+#doc .toolbar .tg:last-child { border-right: 0; }
+#doc .toolbar .tg[data-tab="always"],
+#doc .toolbar[data-menu="file"] .tg[data-tab="file"], #doc .toolbar[data-menu="edit"] .tg[data-tab="edit"],
+#doc .toolbar[data-menu="view"] .tg[data-tab="view"], #doc .toolbar[data-menu="insert"] .tg[data-tab="insert"],
+#doc .toolbar[data-menu="format"] .tg[data-tab="format"], #doc .toolbar[data-menu="layout"] .tg[data-tab="layout"],
+#doc .toolbar[data-menu="review"] .tg[data-tab="review"], #doc .toolbar[data-menu="tools"] .tg[data-tab="tools"] { display: flex; }
+#doc .toolbar button { min-width: 30px; height: 30px; padding: 0 8px; border: 1px solid transparent; border-radius: 4px; background: transparent; color: #2b2a27; font: 500 12.5px var(--sans); }
+#doc .toolbar button:hover { background: #f1f0ec; border-color: #e3e1db; color: #000; }
+#doc .toolbar button.on, #doc .toolbar .tb-toggle.on { background: #e9e7e1; border-color: #d9d6cf; color: #000; }
+#doc .toolbar button:disabled { opacity: .38; pointer-events: none; }
+#doc .toolbar button b, #doc .toolbar button i, #doc .toolbar button u, #doc .toolbar button s { font: 600 15px var(--serif); }
+#doc .toolbar select { height: 30px; border: 1px solid #d9d6cf; border-radius: 4px; background: #fff; color: #1a1a1a; font: 12.5px var(--sans); padding: 0 6px; }
+#doc .toolbar select:disabled { opacity: .45; }
+#doc .toolbar .tb-label { padding: 0 2px 0 6px; font: 500 11.5px var(--sans); color: #8f8c85; white-space: nowrap; }
+#doc .toolbar.off .tg[data-tab="format"], #doc .toolbar.off .tg[data-tab="insert"], #doc .toolbar.off .tg[data-tab="always"] { opacity: .4; pointer-events: none; }
+#doc .toolbar .dd-panel { background: #fff; border-color: #d9d6cf; color: #1a1a1a; }
+#doc .findbar { background: #fbfaf8; }
+#doc .findbar input { background: #fff; color: #1a1a1a; border-color: #d9d6cf; }
+#doc .doc-actions { background: #fbfaf8; }
+/* Review: the Track Changes switch, accept / reject */
+.rv-switch i { position: relative; width: 26px; height: 15px; border-radius: 999px; background: #cfccc4; transition: background .2s; }
+.rv-switch i::after { content: ""; position: absolute; top: 2px; left: 2px; width: 11px; height: 11px; border-radius: 50%; background: #fff; transition: transform .2s; box-shadow: 0 1px 2px rgba(0,0,0,.25); }
+.rv-switch.on i { background: #c2283f; }
+.rv-switch.on i::after { transform: translateX(11px); }
+#doc .toolbar .rv-switch.on { background: #fdf0f2; border-color: #f2c4cc; color: #8f1d2e; }
+#doc .toolbar .rv-yes { color: #1b6e3a; }
+#doc .toolbar .rv-no { color: #a3192f; }
+/* the ruler */
+.ruler-bar { flex: none; position: relative; height: 24px; background: #f1f1ef; border-bottom: 1px solid #e3e1db; overflow: hidden; }
+.ruler { position: absolute; top: 3px; height: 18px; background: #fff; border: 1px solid #dcd9d2; border-radius: 2px; transform-origin: 0 0; user-select: none; }
+.rl-margin { position: absolute; top: 0; bottom: 0; background: #e6e4de; }
+.rl-tick { position: absolute; bottom: 0; width: 1px; height: 4px; background: #8f8c85; }
+.rl-tick.half { height: 7px; }
+.rl-num { position: absolute; top: 2px; transform: translateX(-50%); font: 500 9.5px/1 var(--sans); color: #3e3c38; }
+.rl-handle { position: absolute; top: -1px; width: 11px; height: 19px; margin-left: -5.5px; cursor: ew-resize; touch-action: none; }
+.rl-handle::before { content: ""; position: absolute; left: 0; bottom: 0; border: 5.5px solid transparent; border-bottom: 8px solid #3e3c38; }
+.rl-handle:hover::before, .ruler.dragging .rl-handle::before { border-bottom-color: #000; }
+.rl-handle.fixed { cursor: default; opacity: .5; }
+.ruler[data-tip]::after { content: attr(data-tip); position: absolute; left: 50%; top: 22px; transform: translateX(-50%); padding: 3px 8px; border-radius: 3px; background: #1a1a1a; color: #fff; font: 600 11px var(--sans); white-space: nowrap; }
+/* the desk around the pages */
+#doc .doc-scroll { background: #f1f1ef; }
+#doc .sheet-scroll { padding-top: 26px; }
+/* the status bar */
+.status-bar { flex: none; display: flex; align-items: center; gap: 18px; height: 28px; padding: 0 16px; background: #fff; border-top: 1px solid #e3e1db; font: 12px var(--sans); color: #3e3c38; }
+.status-bar b { font-weight: 600; }
+.sb-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+.sb-track { font: 500 12px var(--sans); color: #3e3c38; padding: 2px 8px; border-radius: 3px; }
+.sb-track:hover:not(:disabled) { background: #f1f0ec; }
+.sb-track.on { color: #a3192f; font-weight: 600; }
+.sb-track:disabled { cursor: default; }
+/* the Reviewing Pane, down the left as in Word */
+.rev-pane { position: fixed; top: 0; bottom: 0; left: 0; z-index: 70; width: 330px; max-width: 100%; display: flex; flex-direction: column; background: #fff; color: #1a1a1a; border-right: 1px solid #e3e1db; box-shadow: 20px 0 50px -30px rgba(0,0,0,.45); }
+.rev-pane header { display: flex; justify-content: space-between; align-items: flex-start; padding: 16px 16px 12px; border-bottom: 1px solid #ecebe7; }
+.rev-pane header b { display: block; font: 600 16px var(--sans); }
+.rev-pane header small { font-size: 12px; color: #8f8c85; }
+.rp-list { flex: 1; overflow-y: auto; }
+.rp-item { display: block; width: 100%; text-align: left; padding: 10px 16px; border-bottom: 1px solid #f1f0ec; border-left: 3px solid var(--c); background: #fff; }
+.rp-item:hover { background: #faf9f6; }
+.rp-item.on { background: color-mix(in srgb, var(--c) 9%, #fff); }
+.rp-item b { font: 600 12.5px var(--sans); color: var(--c); }
+.rp-item small { margin-left: 8px; font: 11.5px var(--sans); color: #8f8c85; }
+.rp-item p { margin: 4px 0 0; font: 14px/1.45 var(--body); color: #1a1a1a; }
+.rp-item p span { font: 600 10.5px var(--sans); letter-spacing: .04em; color: #6c6963; }
+.rp-item ins { text-decoration: underline; text-decoration-color: var(--c); color: color-mix(in srgb, var(--c) 78%, #000); }
+.rp-item del { color: color-mix(in srgb, var(--c) 70%, #000); }
+.rp-empty { padding: 16px; font: italic 14px var(--body); color: #6c6963; }
+/* how the markup looks: All Markup, Simple Markup, No Markup, Original */
+.editor[data-markup="simple"] ins.tc, .editor[data-markup="none"] ins.tc { color: inherit; background: none; text-decoration: none; }
+.editor[data-markup="simple"] del.tc, .editor[data-markup="none"] del.tc { display: none; }
+.editor[data-markup="original"] ins.tc { display: none; }
+.editor[data-markup="original"] del.tc { color: inherit; text-decoration: none; opacity: 1; }
+.editor .tc.sel { outline: 2px solid color-mix(in srgb, var(--c) 55%, transparent); outline-offset: 1px; border-radius: 2px; }
+/* change bars beside changed lines */
+.lv-bar { position: absolute; left: 22px; width: 2px; padding: 0; border: 0; background: #8f8c85; pointer-events: auto; cursor: default; }
+.lv-bar.simple { width: 3px; background: #c2283f; cursor: pointer; }
+.rp-item.flash, .editor .tc.flash { animation: whoFlash 1.6s ease-out; }
+@media (max-width: 760px) { .ruler-bar { display: none; } }

@@ -305,44 +305,77 @@
 
   <!-- ===================== FULL-SCREEN DOCUMENT ===================== -->
   <section id="doc" class="doc hidden">
-    <aside id="whoPanel" class="who-panel hidden" aria-label="Who changed what">
-      <header class="who-head"><div><div class="who-kicker">This sheet</div><h2>Who changed what</h2></div><button type="button" id="whoClose" class="tp-close" title="Close (Esc)">✕</button></header>
-      <div id="whoAll" class="who-all hidden"><button type="button" class="who-yes" data-who-all="accept">✓ Accept all</button><button type="button" class="who-no" data-who-all="reject">✕ Reject all</button></div>
-      <div id="whoList" class="who-list"></div>
-      <p id="whoNote" class="who-note"></p>
+    <!-- Reviewing Pane (Review ▸ Reviewing Pane): every revision on this sheet, in order -->
+    <aside id="revPane" class="rev-pane hidden" aria-label="Reviewing Pane">
+      <header><div><b>Revisions</b><small id="rpSummary"></small></div><button type="button" id="rpClose" class="tp-close" title="Close">✕</button></header>
+      <div id="rpList" class="rp-list"></div>
     </aside>
     <header class="doc-bar">
       <button id="docBack" class="back" title="Back (Esc)">←</button>
       <div class="doc-id"><span class="num" id="docNum"></span><div><b id="docName"></b><small id="docMatter"></small></div></div>
       <nav class="doc-tabs" id="docTabs">
         <button data-view="text">Document</button>
-        <button data-view="changes">Changes <em id="tabChanges"></em></button>
+        <button data-view="changes" class="hidden">Changes <em id="tabChanges"></em></button>
         <button data-view="history">History</button>
         <span class="tab-ink"></span>
       </nav>
       <div class="doc-right">
-        <button type="button" id="reviewBtn" class="review-btn hidden" title="Review: keep every change marked in the colour of the person who made it">Review</button>
-        <button type="button" id="whoBtn" class="who-btn hidden" title="See who changed what, and accept or reject each change">Who changed what <em id="whoCount"></em></button>
         <div id="docLive" class="doc-live hidden" aria-label="Who's in this sheet"></div>
         <span id="docState" class="state"></span>
-        <button id="fmtToggle" class="fmt-toggle" title="Show or hide the formatting toolbar">Format <i>▾</i></button>
-        <select id="tbZoom" class="zoom" title="Zoom">
-          <option value="page">Whole page</option><option value="width">Fit width</option>
-          <option value="0.75">75%</option><option value="1">100%</option><option value="1.25">125%</option><option value="1.5">150%</option>
-        </select>
-        <button class="word" data-export="docx"><svg viewBox="0 0 12 12"><path d="M6 1v7M3 5.5 6 8.5l3-3M1.5 10.5h9"/></svg>Save as Word</button>
-        <button class="word" data-export="pdf"><svg viewBox="0 0 12 12"><path d="M6 1v7M3 5.5 6 8.5l3-3M1.5 10.5h9"/></svg>Save as PDF</button>
+        <button id="fmtToggle" class="hidden" type="button" aria-hidden="true"></button>
       </div>
     </header>
     <div id="docActions" class="doc-actions"></div>
 
-    <!-- Word-style toolbar (Document tab, editable sheets only) -->
-    <div id="toolbar" class="toolbar">
-      <div class="tg">
+    <!-- the menu, as in Word: each heading shows its own row of tools below -->
+    <nav id="menuBar" class="menu-bar" aria-label="Menu">
+      <button type="button" data-menu="file">File</button>
+      <button type="button" data-menu="edit">Edit</button>
+      <button type="button" data-menu="view">View</button>
+      <button type="button" data-menu="insert">Insert</button>
+      <button type="button" data-menu="format">Format</button>
+      <button type="button" data-menu="layout">Page Setup</button>
+      <button type="button" data-menu="review">Review</button>
+      <button type="button" data-menu="tools">Tools</button>
+    </nav>
+    <div id="toolbar" class="toolbar" data-menu="format">
+      <div class="tg" data-tab="always">
         <button data-cmd="undo" title="Undo (Ctrl+Z)">↶</button>
         <button data-cmd="redo" title="Redo (Ctrl+Y)">↷</button>
       </div>
-      <div class="tg">
+      <div class="tg" data-tab="file">
+        <button class="word" data-export="docx" title="Save a Word copy">Save as Word</button>
+        <button class="word" data-export="pdf" title="Save a PDF copy">Save as PDF</button>
+        <button id="tbPrint" title="Print (Ctrl+P)">Print</button>
+      </div>
+      <div class="tg" data-tab="edit">
+        <button data-cmd="cut" title="Cut (Ctrl+X)">Cut</button>
+        <button data-cmd="copy" title="Copy (Ctrl+C)">Copy</button>
+        <button data-cmd="selectAll" title="Select all (Ctrl+A)">Select all</button>
+        <button id="tbFind" title="Find &amp; replace (Ctrl+F)">Find &amp; replace</button>
+      </div>
+      <div class="tg" data-tab="view">
+        <span class="tb-label">Zoom</span>
+        <select id="tbZoom" class="zoom" title="Zoom">
+          <option value="page">Whole page</option><option value="width">Page width</option>
+          <option value="0.75">75%</option><option value="1">100%</option><option value="1.25">125%</option><option value="1.5">150%</option>
+        </select>
+        <button type="button" id="tbRuler" class="tb-toggle" title="Show or hide the ruler">Ruler</button>
+        <button type="button" id="tbComments" class="tb-toggle" title="Show or hide the comments">Comments</button>
+      </div>
+      <div class="tg" data-tab="insert">
+        <div class="dd"><button data-dd="link" title="Link">Link</button>
+          <div class="dd-panel" data-panel="link"><form id="linkForm" class="inline-form"><input name="url" placeholder="https://…" /><button>Add</button></form></div></div>
+        <div class="dd"><button data-dd="table" title="Table">Table</button>
+          <div class="dd-panel" data-panel="table"><div id="gridPick" class="grid-pick"></div><div id="gridLabel" class="grid-label">Insert table</div></div></div>
+        <button id="tbImage" title="Picture">Picture</button>
+        <input id="imgInput" type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden />
+        <button data-insert="rule" title="Horizontal line">―</button>
+        <button data-insert="break" title="Page break">Break</button>
+        <div class="dd"><button data-dd="symbol" title="Symbols">§</button>
+          <div class="dd-panel symbols" data-panel="symbol"></div></div>
+      </div>
+      <div class="tg" data-tab="format">
         <select id="tbStyle" title="Paragraph style">
           <option value="p">Normal</option><option value="h1">Title</option><option value="h2">Heading 1</option>
           <option value="h3">Heading 2</option><option value="h4">Heading 3</option><option value="blockquote">Quote</option>
@@ -354,7 +387,7 @@
         </select>
         <select id="tbSize" title="Font size (pt)"></select>
       </div>
-      <div class="tg">
+      <div class="tg" data-tab="format">
         <button data-cmd="bold" title="Bold (Ctrl+B)"><b>B</b></button>
         <button data-cmd="italic" title="Italic (Ctrl+I)"><i>I</i></button>
         <button data-cmd="underline" title="Underline (Ctrl+U)"><u>U</u></button>
@@ -367,13 +400,13 @@
           <div class="dd-panel swatches" data-panel="hilite"></div></div>
         <button data-cmd="removeFormat" title="Clear formatting">T<sub>✕</sub></button>
       </div>
-      <div class="tg">
+      <div class="tg" data-tab="format">
         <button data-cmd="justifyLeft" title="Align left"><svg viewBox="0 0 16 16"><path d="M2 3h12M2 6.5h8M2 10h12M2 13.5h8"/></svg></button>
         <button data-cmd="justifyCenter" title="Centre"><svg viewBox="0 0 16 16"><path d="M2 3h12M4 6.5h8M2 10h12M4 13.5h8"/></svg></button>
         <button data-cmd="justifyRight" title="Align right"><svg viewBox="0 0 16 16"><path d="M2 3h12M6 6.5h8M2 10h12M6 13.5h8"/></svg></button>
         <button data-cmd="justifyFull" title="Justify"><svg viewBox="0 0 16 16"><path d="M2 3h12M2 6.5h12M2 10h12M2 13.5h12"/></svg></button>
       </div>
-      <div class="tg">
+      <div class="tg" data-tab="format">
         <button data-cmd="insertUnorderedList" title="Bullets"><svg viewBox="0 0 16 16"><circle cx="3" cy="4" r="1"/><circle cx="3" cy="8" r="1"/><circle cx="3" cy="12" r="1"/><path d="M6 4h8M6 8h8M6 12h8"/></svg></button>
         <button data-cmd="insertOrderedList" title="Numbering"><svg viewBox="0 0 16 16"><text x="1" y="5.5">1</text><text x="1" y="9.5">2</text><text x="1" y="13.5">3</text><path d="M6 4h8M6 8h8M6 12h8"/></svg></button>
         <button data-cmd="outdent" title="Decrease indent"><svg viewBox="0 0 16 16"><path d="M7 3h7M7 6.5h7M7 10h7M2 13.5h12M5 6 2 8l3 2"/></svg></button>
@@ -383,21 +416,47 @@
           <option value="1.5">1.5</option><option value="2">2.0</option><option value="2.5">2.5</option>
         </select>
       </div>
-      <div class="tg">
-        <div class="dd"><button data-dd="link" title="Link">Link</button>
-          <div class="dd-panel" data-panel="link"><form id="linkForm" class="inline-form"><input name="url" placeholder="https://…" /><button>Add</button></form></div></div>
-        <div class="dd"><button data-dd="table" title="Table">Table</button>
-          <div class="dd-panel" data-panel="table"><div id="gridPick" class="grid-pick"></div><div id="gridLabel" class="grid-label">Insert table</div></div></div>
-        <button id="tbImage" title="Picture">Picture</button>
-        <input id="imgInput" type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden />
-        <button data-insert="rule" title="Horizontal line">―</button>
-        <button data-insert="break" title="Page break">Break</button>
-        <div class="dd"><button data-dd="symbol" title="Symbols">§</button>
-          <div class="dd-panel symbols" data-panel="symbol"></div></div>
+      <div class="tg" data-tab="layout">
+        <span class="tb-label">Size</span>
+        <select id="psSize" title="Page size"><option value="a4">A4</option><option value="letter">Letter</option><option value="legal">Legal</option><option value="a5">A5</option><option value="custom" disabled>Custom</option></select>
+        <span class="tb-label">Orientation</span>
+        <select id="psOrient" title="Orientation"><option value="portrait">Portrait</option><option value="landscape">Landscape</option></select>
+        <span class="tb-label">Margins</span>
+        <select id="psMargins" title="Margins">
+          <option value="normal">Normal (2.54 cm)</option><option value="narrow">Narrow (1.27 cm)</option><option value="moderate">Moderate</option>
+          <option value="wide">Wide</option><option value="legal">Legal (3.81 cm left)</option><option value="custom" disabled>Custom (set on the ruler)</option>
+        </select>
+        <button data-insert="break" title="Start a new page here">Page break</button>
       </div>
-      <div class="tg">
-        <button id="tbFind" title="Find & replace (Ctrl+F)">Find</button>
-        <button id="tbPrint" title="Print">Print</button>
+      <div class="tg" data-tab="review">
+        <button type="button" id="rvTrack" class="rv-switch" role="switch" aria-checked="false"><i></i>Track Changes</button>
+        <select id="rvMarkup" title="Display for review">
+          <option value="all">All Markup</option><option value="simple">Simple Markup</option><option value="none">No Markup</option><option value="original">Original</option>
+        </select>
+        <button type="button" id="rvPane" class="tb-toggle" title="Reviewing Pane">Reviewing Pane</button>
+      </div>
+      <div class="tg" data-tab="review">
+        <button type="button" id="rvPrev" title="Previous change">‹ Previous</button>
+        <button type="button" id="rvNext" title="Next change">Next ›</button>
+        <span id="rvCount" class="tb-label"></span>
+      </div>
+      <div class="tg" data-tab="review">
+        <button type="button" id="rvAccept" class="rv-yes" title="Accept this change and move to the next">✓ Accept</button>
+        <button type="button" id="rvAcceptAll" title="Accept all changes">Accept All</button>
+        <button type="button" id="rvReject" class="rv-no" title="Reject this change and move to the next">✕ Reject</button>
+        <button type="button" id="rvRejectAll" title="Reject all changes">Reject All</button>
+      </div>
+      <div class="tg" data-tab="review">
+        <button type="button" id="rvNewC" title="New comment">New Comment</button>
+        <button type="button" id="rvDelC" title="Delete comment">Delete</button>
+        <button type="button" id="rvPrevC" title="Previous comment">‹</button>
+        <button type="button" id="rvNextC" title="Next comment">›</button>
+        <button type="button" id="rvShowC" class="tb-toggle" title="Show comments">Show Comments</button>
+      </div>
+      <div class="tg" data-tab="tools">
+        <button type="button" id="tlCount" title="Word count">Word count</button>
+        <button type="button" id="tlSpell" class="tb-toggle on" title="Check spelling as you type">Spelling</button>
+        <button type="button" data-goto-find title="Find &amp; replace">Find &amp; replace</button>
       </div>
     </div>
     <form id="findBar" class="findbar hidden">
@@ -410,6 +469,7 @@
       <button type="button" data-f="close" class="x">✕</button>
     </form>
 
+    <div id="rulerBar" class="ruler-bar"><div id="ruler" class="ruler"></div></div>
     <div class="doc-scroll">
       <div class="page" id="page">
         <button type="button" id="mShow" class="m-show" title="Show the remarks">‹ <span id="mShowLabel">Remarks</span> <em id="mShowCount"></em></button>
@@ -421,7 +481,6 @@
             <div class="editor rich" id="editor" contenteditable="true" spellcheck="true"></div>
           </div>
           <aside class="margin" id="margin">
-            <div id="liveFeed" class="live-feed hidden" aria-live="polite"></div>
             <div class="m-head"><span id="mTitle">Remarks</span><em id="mCount"></em><button type="button" id="mGeneral" class="m-plus" title="Add a remark that isn't tied to a passage">+ Remark</button><button type="button" id="mHide" class="m-hide" title="Hide the remarks">Hide ›</button></div>
             <!-- appears only when text is selected (or "+ Remark" is clicked), level with the selection -->
             <form id="mCompose" class="m-compose hidden">
@@ -436,6 +495,10 @@
         <div class="pane view-history"></div>
       </div>
     </div>
+    <footer id="statusBar" class="status-bar">
+      <span id="sbWords"></span><span id="sbChars"></span><span>Page <b id="sbPage">1</b> of <span id="sbPages">1</span></span>
+      <span class="sb-right"><button type="button" id="sbTrack" class="sb-track">Track Changes: Off</button><span id="sbZoom"></span></span>
+    </footer>
   </section>
 
   <!-- the legal team: who's on it, permissions, add by email -->
@@ -479,5 +542,6 @@
   <script src="/tour.js"></script>
   <script src="/live.js"></script>
   <script src="/changes.js"></script>
+  <script src="/docui.js"></script>
 </body>
 </html>

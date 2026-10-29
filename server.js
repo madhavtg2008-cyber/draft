@@ -491,11 +491,11 @@ function applyEdit(stream, text, authorId, isHead) {
       flushTo(live[a]);
       const tok = stream[live[a]];
       s = live[a] + 1;
-      if (!tok.a && !isHead) out.push({ t: tok.t, d: authorId }); // confirmed text struck out, pending
+      if (!tok.a && !isHead) out.push({ t: tok.t, d: authorId, w: Date.now() }); // confirmed text struck out, pending
       // a pending insertion that is deleted again simply disappears; the Head's deletions are final
     } else {
       flushDeleted();
-      out.push(isHead ? { t: B[b] } : { t: B[b], a: authorId });
+      out.push(isHead ? { t: B[b] } : { t: B[b], a: authorId, w: Date.now() });
     }
   }
   flushTo(stream.length);
@@ -523,8 +523,8 @@ function segments(stream) {
     const k = tok.d ? 'del' : tok.a ? 'ins' : 'eq';
     const by = tok.d || tok.a || null, h = ids[i];
     const last = segs[segs.length - 1];
-    if (last && last.k === k && last.by === by && last.h === h) last.t += tok.t;
-    else segs.push({ k, t: tok.t, by, h });
+    if (last && last.k === k && last.by === by && last.h === h) { last.t += tok.t; if (tok.w > (last.at || 0)) last.at = tok.w; }
+    else segs.push({ k, t: tok.t, by, h, ...(tok.w ? { at: tok.w } : {}) });
   });
   return { segs, pending: count };
 }
@@ -633,10 +633,13 @@ function recordVersion(draftId, lane, content, authorId, note, forceNew) {
 }
 
 // Save new working text for a lane as `user`: attribute it, then version it.
-function saveLane(draftId, lane, html, user, note, forceNew = false) {
+try { db.exec('ALTER TABLE drafts ADD COLUMN tracking TEXT'); } catch { /* already there */ }
+const trackingOn = (draftId, lane) => { try { return !!JSON.parse(db.prepare('SELECT tracking FROM drafts WHERE id = ?').get(draftId)?.tracking || '{}')[lane]; } catch { return false; } };
+function saveLane(draftId, lane, html, user, note, forceNew = false, tracked = false) {
   const content = clean(html);
   const { stream } = getState(draftId, lane);
-  putState(draftId, lane, applyEdit(stream, content, user.id, canConfirm(user))); // confirmers' edits need no confirming
+  // confirmers' edits need no confirming — unless Track Changes is on for this sheet
+  putState(draftId, lane, applyEdit(stream, content, user.id, canConfirm(user) && !tracked));
   return recordVersion(draftId, lane, content, user.id, note, forceNew);
 }
 
@@ -696,7 +699,7 @@ function laneInfo(user, draft, lane) {
   const { segs, pending } = segments(stream);
   return v && {
     content: v.content, versionId: v.id, updatedAt: v.updated_at, author: v.author_name, authorColor: v.author_color,
-    editable: canEditLane(user, draft, lane), rev, pending, segments: segs,
+    editable: canEditLane(user, draft, lane), rev, pending, segments: segs, tracking: trackingOn(draft.id, lane),
   };
 }
 
@@ -1118,6 +1121,13 @@ app.patch('/api/drafts/:id', auth, loadDraft, (req, res) => {
     }
     if ('folder' in req.body) db.prepare('UPDATE drafts SET folder = ? WHERE id = ?').run(String(req.body.folder || '').trim().slice(0, 80) || null, doc.id);
   }
+  // page size, orientation and margins (Page Setup and the ruler): this document's own
+  if ('page' in b && req.user.role === 'team') {
+    if (lockedForAssociate(req.user, doc)) return res.status(403).json({ error: HEAD_ITEM });
+    const page = cleanPage(b.page);
+    if (!page) return res.status(400).json({ error: 'Those margins leave no room for text' });
+    db.prepare('UPDATE drafts SET page_setup = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(page), now(), doc.id);
+  }
   if ('matterDate' in (req.body || {}) && req.user.role === 'team') {
     const md = String(req.body.matterDate || '');
     if (md && !/^\d{4}-\d{2}-\d{2}$/.test(md)) return res.status(400).json({ error: 'Invalid date' });
@@ -1178,7 +1188,7 @@ app.put('/api/drafts/:id/lanes/:lane', auth, loadDraft, laneParam, (req, res) =>
   const setup = cleanPage(req.body?.page); // an imported Word file brings its own page size & margins
   if (setup) { db.prepare('UPDATE drafts SET page_setup = ? WHERE id = ?').run(JSON.stringify(setup), req.draft.id); broadcast(req.draft.id, 'draft', { by: req.user.name, kind: 'page' }); }
   if (!(prev && prev.content === content)) {
-    saveLane(req.draft.id, lane, content, req.user, note, !!note);
+    saveLane(req.draft.id, lane, content, req.user, note, !!note, trackingOn(req.draft.id, lane));
     if (note) logActivity(req.draft.id, lane, note.charAt(0).toLowerCase() + note.slice(1), req.user.id);
     else if (!prev || prev.author_id !== req.user.id || now() - prev.updated_at > 120000) logActivity(req.draft.id, lane, `edited the ${lane} draft`, req.user.id);
     laneChanged(req.draft.id, lane, req.user);
@@ -1351,11 +1361,23 @@ app.post('/api/drafts/:id/live', auth, loadDraft, (req, res) => {
     });
   // each sheet's change counter and who changed it last; a fingerprint of the remarks and of the matter
   const revs = {}, lanes = LANES.filter((l) => canSeeLane(req.user, l));
-  for (const l of lanes) revs[l] = { v: getState(d.id, l).rev, by: db.prepare('SELECT user_id FROM lane_last WHERE draft_id = ? AND lane = ?').get(d.id, l)?.user_id ?? null };
+  for (const l of lanes) revs[l] = { v: getState(d.id, l).rev, by: db.prepare('SELECT user_id FROM lane_last WHERE draft_id = ? AND lane = ?').get(d.id, l)?.user_id ?? null, t: trackingOn(d.id, l) };
   const ph = lanes.map(() => '?').join(',');
   const c = db.prepare(`SELECT COUNT(*) AS n, MAX(id) AS top FROM comments WHERE draft_id = ? AND lane IN (${ph})`).get(d.id, ...lanes);
   const m = rootOf(d);
   res.json({ people, revs, remarks: `${c.n}:${c.top || 0}`, matter: `${m.updated_at}:${d.updated_at}` });
+});
+
+// Track Changes on or off for one sheet: whoever may accept changes can switch it, for everyone
+app.post('/api/drafts/:id/lanes/:lane/tracking', auth, teamOnly, loadDraft, laneParam, (req, res) => {
+  if (!canConfirm(req.user)) return res.status(403).json({ error: 'Only the Team Head (or an associate allowed to confirm changes) can switch Track Changes' });
+  let t = {};
+  try { t = JSON.parse(req.draft.tracking || '{}'); } catch { /* none yet */ }
+  t[req.params.lane] = !!req.body?.on;
+  db.prepare('UPDATE drafts SET tracking = ? WHERE id = ?').run(JSON.stringify(t), req.draft.id);
+  logActivity(req.draft.id, req.params.lane, `turned Track Changes ${t[req.params.lane] ? 'on' : 'off'}`, req.user.id);
+  laneChanged(req.draft.id, req.params.lane, req.user, 'edit');
+  res.json({ lane: laneInfo(req.user, req.draft, req.params.lane) });
 });
 
 // --- live typing indicator
