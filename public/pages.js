@@ -19,9 +19,12 @@ function pageGeom() {
 // The document exactly as it is saved: without the on-screen page spacers.
 function docHtml() {
   const ed = editor();
-  if (!ed.querySelector('.pg-gap')) return ed.innerHTML;
+  if (!ed.querySelector('.pg-gap, .tc')) return ed.innerHTML;
   const copy = ed.cloneNode(true);
   copy.querySelectorAll('.pg-gap').forEach((g) => g.remove());
+  // review markup: struck-out text isn't part of the document, and added text is just text
+  copy.querySelectorAll('del.tc').forEach((d) => d.remove());
+  copy.querySelectorAll('ins.tc').forEach((i) => i.replaceWith(...i.childNodes));
   return copy.innerHTML;
 }
 

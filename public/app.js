@@ -47,16 +47,19 @@ function htmlToText(html) {
   return ta.value;
 }
 // caret position as a character offset, so live refreshes don't throw the cursor around
+// (struck-out text shown in Review doesn't count, so it can come and go without moving the cursor)
 function caretOffset(el) {
   const sel = getSelection();
   if (!sel.rangeCount || !el.contains(sel.anchorNode)) return null;
   const r = sel.getRangeAt(0).cloneRange();
   r.selectNodeContents(el);
   r.setEnd(sel.anchorNode, sel.anchorOffset);
-  return r.toString().length;
+  let off = r.toString().length;
+  for (const d of el.querySelectorAll('del.tc')) if (r.intersectsNode(d)) off -= d.textContent.length;
+  return off;
 }
 function setCaret(el, off) {
-  const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, { acceptNode: (n) => (n.parentElement?.closest('del.tc') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT) });
   for (let n = w.nextNode(); n; n = w.nextNode()) {
     if (off <= n.length) { const r = document.createRange(); r.setStart(n, off); r.collapse(true); const s = getSelection(); s.removeAllRanges(); s.addRange(r); return; }
     off -= n.length;
@@ -441,6 +444,22 @@ document.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); save(); }
 });
 
+// ---------- Review: tracked changes shown right in the document ----------
+const reviewOn = () => state.lane && state.lane !== 'final' && lsGet('lex_review') !== '0';
+function reviewHtml(info) {
+  return info.segments.map((s) => {
+    if (s.k === 'eq') return s.t;
+    const p = person(s.by), ins = s.k === 'ins';
+    const tip = esc(`${p.name} ${ins ? 'added' : 'deleted'} this`);
+    return s.t.split(/(<[^>]*>)/).map((piece) => {
+      if (!piece) return '';
+      if (piece.startsWith('<')) return ins ? piece : ''; // deleted paragraph breaks aren't shown as breaks
+      return ins ? `<ins class="tc" data-h="${s.h}" style="--c:${p.color}" title="${tip}">${piece}</ins>`
+        : `<del class="tc" data-h="${s.h}" contenteditable="false" style="--c:${p.color}" title="${tip}">${piece}</del>`;
+    }).join('');
+  }).join('');
+}
+
 function renderDoc({ force = false, fromServer = false } = {}) {
   const lane = state.lane;
   const info = state.cur.lanes[lane];
@@ -454,8 +473,11 @@ function renderDoc({ force = false, fromServer = false } = {}) {
   const ed = editor(), scroller = $('#sheetScroll');
   if (force || !state.dirty) {
     const top = scroller.scrollTop, caret = caretOffset(ed);
-    if (force || state.loaded !== info.content) {
-      ed.innerHTML = info.content;
+    // Review (like Word's track changes): every waiting change stays marked in its author's colour
+    const shown = reviewOn() && info.pending ? reviewHtml(info) : info.content;
+    if (force || state.shown !== shown) {
+      ed.innerHTML = shown;
+      state.shown = shown;
       state.loaded = info.content;
       if (fromServer) { const p = $('#page'); p.classList.remove('touched'); void p.offsetWidth; p.classList.add('touched'); }
       if (caret !== null) setCaret(ed, caret);
@@ -834,7 +856,11 @@ async function save() {
     if (state.lane === lane && docHtml() === content) {
       state.dirty = false;
       if (r.merged) renderDoc({ fromServer: true }); // someone else's edits were folded in: show them (keeps the cursor)
-      else state.loaded = r.lane.content;
+      else {
+        state.loaded = r.lane.content;
+        if (!reviewOn()) state.shown = r.lane.content;
+        else { clearTimeout(state.reviewTimer); state.reviewTimer = setTimeout(() => { if (!state.dirty && state.lane === lane) renderDoc(); }, 900); }
+      }
       idleState();
     } else state.loaded = r.lane.content;
     renderDesk();

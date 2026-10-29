@@ -223,6 +223,8 @@
                     <div class="pm-name" id="pmName"></div>
                     <div class="pm-sub" id="pmSub"></div>
                     <button id="pmPlan" class="pm-row team-only" type="button"><span id="pmFirm"></span><b id="pmPlanName"></b></button>
+                    <div class="pm-row pm-color-row"><span>Your colour</span><small>shows when you type and edit</small></div>
+                    <div class="pm-colors" id="pmColors" role="radiogroup" aria-label="Your colour"></div>
                     <button id="pmTheme" class="pm-row" type="button"><span>Theme</span><b><i class="pm-dot"></i><span id="pmThemeName"></span> ›</b></button>
                     <button id="pmTour" class="pm-row" type="button"><span>Replay the tour</span><b>›</b></button>
                     <a id="pmAdmin" class="pm-row hidden" href="/admin" target="_blank" rel="noopener"><span>Owner dashboard</span><b>↗</b></a>
@@ -303,6 +305,12 @@
 
   <!-- ===================== FULL-SCREEN DOCUMENT ===================== -->
   <section id="doc" class="doc hidden">
+    <aside id="whoPanel" class="who-panel hidden" aria-label="Who changed what">
+      <header class="who-head"><div><div class="who-kicker">This sheet</div><h2>Who changed what</h2></div><button type="button" id="whoClose" class="tp-close" title="Close (Esc)">✕</button></header>
+      <div id="whoAll" class="who-all hidden"><button type="button" class="who-yes" data-who-all="accept">✓ Accept all</button><button type="button" class="who-no" data-who-all="reject">✕ Reject all</button></div>
+      <div id="whoList" class="who-list"></div>
+      <p id="whoNote" class="who-note"></p>
+    </aside>
     <header class="doc-bar">
       <button id="docBack" class="back" title="Back (Esc)">←</button>
       <div class="doc-id"><span class="num" id="docNum"></span><div><b id="docName"></b><small id="docMatter"></small></div></div>
@@ -313,6 +321,8 @@
         <span class="tab-ink"></span>
       </nav>
       <div class="doc-right">
+        <button type="button" id="reviewBtn" class="review-btn hidden" title="Review: keep every change marked in the colour of the person who made it">Review</button>
+        <button type="button" id="whoBtn" class="who-btn hidden" title="See who changed what, and accept or reject each change">Who changed what <em id="whoCount"></em></button>
         <div id="docLive" class="doc-live hidden" aria-label="Who's in this sheet"></div>
         <span id="docState" class="state"></span>
         <button id="fmtToggle" class="fmt-toggle" title="Show or hide the formatting toolbar">Format <i>▾</i></button>
@@ -468,5 +478,6 @@
   <script src="/docs.js"></script>
   <script src="/tour.js"></script>
   <script src="/live.js"></script>
+  <script src="/changes.js"></script>
 </body>
 </html>

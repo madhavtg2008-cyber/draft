@@ -964,6 +964,13 @@ app.post('/api/auth/logout', (req, res) => {
   res.json({ ok: true });
 });
 app.get('/api/me', auth, (req, res) => res.json({ user: meUser(req.user) }));
+// each person picks the colour that marks their typing and edits
+app.patch('/api/me/color', auth, (req, res) => {
+  const c = String(req.body?.color || '').toLowerCase();
+  if (!/^#[0-9a-f]{6}$/.test(c)) return res.status(400).json({ error: 'Pick a colour' });
+  db.prepare('UPDATE users SET color = ? WHERE id = ?').run(c, req.user.id);
+  res.json({ user: meUser(getUser(req.user.id)) });
+});
 // the first-time tutorial: shown once per person, then never again (unless they replay it)
 app.post('/api/me/tour', auth, (req, res) => {
   db.prepare('UPDATE users SET tour_done = ? WHERE id = ?').run(req.body?.done === false ? 0 : 1, req.user.id);

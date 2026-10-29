@@ -381,3 +381,27 @@ $('#epYes').addEventListener('click', async () => {
   } catch (err) { $('#epError').textContent = err.message; }
 });
 
+
+// ---------- your colour: marks your typing, your edits and your remarks for everyone ----------
+const MY_COLOURS = ['#3b4fd8', '#1f7fbf', '#0f8a7e', '#2f8f2f', '#b8860b', '#d0571b', '#c2283f', '#d63d8f', '#a23ec9', '#6b4fd8', '#8a5a2b', '#4a4a4a'];
+function renderMyColours() {
+  const mine = (state.me?.color || '').toLowerCase();
+  const list = MY_COLOURS.includes(mine) || !mine ? MY_COLOURS : [...MY_COLOURS, mine];
+  $('#pmColors').innerHTML = list.map((c) => `<button type="button" class="pm-swatch${c === mine ? ' on' : ''}" data-color="${c}" style="--c:${c}" title="${c}" aria-checked="${c === mine}" role="radio"></button>`).join('')
+    + `<label class="pm-swatch pm-custom" title="Any colour"><input type="color" value="${mine || '#3b4fd8'}" />+</label>`;
+}
+async function setMyColour(color) {
+  try {
+    state.me = (await api('PATCH', '/api/me/color', { color })).user;
+    document.documentElement.style.setProperty('--me', state.me.color);
+    $('#meAvatar')?.style.setProperty('--c', state.me.color);
+    const p = state.cur?.people?.find((x) => x.id === state.me.id);
+    if (p) p.color = state.me.color;
+    renderMyColours();
+    if (state.cur) renderPresence(state.cur.presence?.map((x) => (x.id === state.me.id ? { ...x, color: state.me.color } : x)));
+    if (typeof fillProfile === 'function') fillProfile();
+  } catch (err) { ledger(err.message); }
+}
+$('#pmColors').addEventListener('click', (e) => { const b = e.target.closest('[data-color]'); if (b) setMyColour(b.dataset.color); });
+$('#pmColors').addEventListener('change', (e) => { if (e.target.type === 'color') setMyColour(e.target.value); });
+$('#profileBtn').addEventListener('click', () => setTimeout(renderMyColours, 0));
