@@ -383,7 +383,14 @@ $('#epYes').addEventListener('click', async () => {
 
 
 // ---------- your colour: marks your typing, your edits and your remarks for everyone ----------
-const MY_COLOURS = ['#3b4fd8', '#1f7fbf', '#0f8a7e', '#2f8f2f', '#b8860b', '#d0571b', '#c2283f', '#d63d8f', '#a23ec9', '#6b4fd8', '#8a5a2b', '#4a4a4a'];
+// 30 colours, all dark enough to read on the white page
+const MY_COLOURS = [
+  '#c2283f', '#e5484d', '#d6336c', '#d63d8f', '#be4bdb', '#a23ec9',
+  '#7048e8', '#6b4fd8', '#3b4fd8', '#4263eb', '#1c7ed6', '#1f7fbf',
+  '#1098ad', '#0b7285', '#0f8a7e', '#0ca678', '#2f9e44', '#2f8f2f',
+  '#5c940d', '#74b816', '#b8860b', '#e67700', '#f08c00', '#d0571b',
+  '#e8590c', '#c92a2a', '#8a5a2b', '#5f3dc4', '#495057', '#212529',
+];
 function renderMyColours() {
   const mine = (state.me?.color || '').toLowerCase();
   const list = MY_COLOURS.includes(mine) || !mine ? MY_COLOURS : [...MY_COLOURS, mine];

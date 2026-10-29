@@ -1137,7 +1137,7 @@ body.role-client .desk { grid-template-columns: repeat(2, minmax(0, 340px)); jus
 /* your colour, in the profile menu */
 .pm-color-row { cursor: default; display: grid; gap: 1px; }
 .pm-color-row small { font-size: 11px; color: var(--mute); }
-.pm-colors { display: grid; grid-template-columns: repeat(7, 1fr); gap: 7px; padding: 10px 4px 4px; }
+.pm-colors { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; padding: 10px 4px 4px; }
 .pm-swatch { position: relative; aspect-ratio: 1; border-radius: 50%; background: var(--c); border: 0; padding: 0; cursor: pointer; transition: transform .15s; }
 .pm-swatch:hover { transform: scale(1.12); }
 .pm-swatch.on { box-shadow: 0 0 0 2px var(--night-2), 0 0 0 4px var(--chalk); }
