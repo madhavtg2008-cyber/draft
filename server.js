@@ -787,8 +787,11 @@ function broadcast(draftId, type, payload = {}, { lane = null, excludeUserId = n
     s.res.write(`event: ${type}\ndata: ${JSON.stringify({ draftId, lane, ...payload })}\n\n`);
   }
 }
-const laneChanged = (draftId, lane, user, kind = 'edit') =>
+db.exec('CREATE TABLE IF NOT EXISTS lane_last (draft_id INTEGER NOT NULL, lane TEXT NOT NULL, user_id INTEGER, at INTEGER, PRIMARY KEY (draft_id, lane))');
+const laneChanged = (draftId, lane, user, kind = 'edit') => {
+  db.prepare('INSERT INTO lane_last (draft_id, lane, user_id, at) VALUES (?,?,?,?) ON CONFLICT(draft_id, lane) DO UPDATE SET user_id = excluded.user_id, at = excluded.at').run(draftId, lane, user.id, now());
   broadcast(draftId, 'lane', { by: user.name, byId: user.id, kind }, { lane });
+};
 
 // ---------- app ----------
 const app = express();
@@ -1278,6 +1281,34 @@ app.delete('/api/drafts/:id/comments/:cid', auth, loadDraft, (req, res) => {
   db.prepare('DELETE FROM comments WHERE id = ?').run(c.id);
   broadcast(req.draft.id, 'comment-deleted', { id: c.id, by: req.user.name }, { lane: c.lane });
   res.json({ ok: true });
+});
+
+// --- live: who's in this matter, which sheet and paragraph they're on, whether they're typing,
+// and the latest version of each sheet. Every open page checks in every couple of seconds. It's kept
+// in the database (not in one server's memory) so it works however many servers are running.
+db.exec('CREATE TABLE IF NOT EXISTS live (draft_id INTEGER NOT NULL, user_id INTEGER NOT NULL, lane TEXT, para INTEGER, typing_at INTEGER, seen_at INTEGER NOT NULL, PRIMARY KEY (draft_id, user_id))');
+app.post('/api/drafts/:id/live', auth, loadDraft, (req, res) => {
+  const d = req.draft, t = now(), b = req.body || {};
+  const lane = LANES.includes(b.lane) && canSeeLane(req.user, b.lane) ? b.lane : null;
+  const para = lane && Number.isInteger(b.para) && b.para >= 0 ? b.para : null;
+  db.prepare(`INSERT INTO live (draft_id, user_id, lane, para, typing_at, seen_at) VALUES (?,?,?,?,?,?)
+    ON CONFLICT(draft_id, user_id) DO UPDATE SET lane = excluded.lane, para = excluded.para, typing_at = COALESCE(excluded.typing_at, live.typing_at), seen_at = excluded.seen_at`)
+    .run(d.id, req.user.id, lane, para, b.typing ? t : null, t);
+  // only what this viewer may know: a client never learns who is in the team draft
+  const people = db.prepare('SELECT l.lane, l.para, l.typing_at, u.* FROM live l JOIN users u ON u.id = l.user_id WHERE l.draft_id = ? AND l.seen_at > ? AND u.disabled = 0 AND u.id != ?')
+    .all(d.id, t - 12000, req.user.id)
+    .filter((r) => req.user.role === 'team' || r.role !== 'team' || !r.lane || canSeeLane(req.user, r.lane))
+    .map((r) => {
+      const seen = r.lane && canSeeLane(req.user, r.lane);
+      return { ...publicUser(r), lane: seen ? r.lane : null, para: seen ? r.para : null, typing: !!(seen && r.typing_at > t - 4000) };
+    });
+  // each sheet's change counter and who changed it last; a fingerprint of the remarks and of the matter
+  const revs = {}, lanes = LANES.filter((l) => canSeeLane(req.user, l));
+  for (const l of lanes) revs[l] = { v: getState(d.id, l).rev, by: db.prepare('SELECT user_id FROM lane_last WHERE draft_id = ? AND lane = ?').get(d.id, l)?.user_id ?? null };
+  const ph = lanes.map(() => '?').join(',');
+  const c = db.prepare(`SELECT COUNT(*) AS n, MAX(id) AS top FROM comments WHERE draft_id = ? AND lane IN (${ph})`).get(d.id, ...lanes);
+  const m = rootOf(d);
+  res.json({ people, revs, remarks: `${c.n}:${c.top || 0}`, matter: `${m.updated_at}:${d.updated_at}` });
 });
 
 // --- live typing indicator

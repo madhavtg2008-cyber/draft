@@ -1092,3 +1092,31 @@ body.role-client .desk { grid-template-columns: repeat(2, minmax(0, 340px)); jus
 .rail .new-form .row .btn-primary.sm { padding: 11px 22px; }
 @media (max-width: 1280px) { .rail .new-form:not(.hidden) { left: 200px; max-width: calc(100vw - 200px); } }
 @media (max-width: 900px) { .rail .new-form:not(.hidden) { left: 0; width: 100%; max-width: 100%; padding: 26px 16px; } }
+
+/* ---------- live drafting: who's here, where they are, and what they just changed ---------- */
+.doc-live { display: flex; align-items: center; gap: 6px; margin-right: 6px; }
+.dl-person { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px 3px 3px; border: 1px solid var(--line); border-radius: 999px; font: 500 11.5px var(--sans); color: var(--chalk); }
+.dl-person .avatar { width: 22px; height: 22px; font-size: 9px; box-shadow: 0 0 0 2px var(--c); }
+.dl-person.typing .avatar { animation: lvPulse 1.2s ease-in-out infinite; }
+.dl-person em { font-style: normal; color: var(--mute); margin-left: 2px; }
+@keyframes lvPulse { 0%, 100% { box-shadow: 0 0 0 2px var(--c); } 50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--c) 35%, transparent); } }
+.live-layer { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+.lv-here { position: absolute; width: 3px; background: var(--c); border-radius: 2px; transition: top .25s var(--ease), height .25s var(--ease); }
+.lv-here.typing { animation: lvBlink 1s ease-in-out infinite; }
+@keyframes lvBlink { 50% { opacity: .45; } }
+.lv-name { position: absolute; right: 7px; top: -2px; white-space: nowrap; padding: 2px 7px; border-radius: 3px; background: var(--c); color: #fff; font: 600 10px/1.4 var(--sans); letter-spacing: .02em; box-shadow: 0 2px 6px rgba(0,0,0,.18); }
+.lv-edit { position: absolute; border-radius: 3px; background: color-mix(in srgb, var(--c) 13%, transparent); box-shadow: inset 3px 0 0 var(--c); transition: opacity 1s linear; }
+.lv-tag { position: absolute; right: 4px; top: -9px; padding: 1px 7px; border-radius: 3px; background: var(--c); color: #fff; font: 600 9.5px/1.5 var(--sans); white-space: nowrap; }
+.live-feed { display: grid; gap: 4px; padding: 10px 12px 12px; margin-bottom: 10px; border-bottom: 1px solid var(--rule); }
+.lf-head { font: 600 9.5px var(--sans); letter-spacing: .2em; text-transform: uppercase; color: var(--graphite); margin-bottom: 2px; }
+.lf-item { display: grid; grid-template-columns: auto 1fr; gap: 0 6px; text-align: left; padding: 6px 8px; border-left: 3px solid var(--c); background: color-mix(in srgb, var(--c) 7%, transparent); font-size: 12px; color: var(--ink); }
+.lf-item:hover { background: color-mix(in srgb, var(--c) 14%, transparent); }
+.lf-item span { color: var(--graphite); font-size: 11px; }
+.lf-item q { grid-column: 1 / -1; quotes: '“' '”'; color: var(--graphite); font: italic 12.5px/1.4 var(--body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 760px) { .dl-name { display: none; } .dl-person { padding: 2px; } }
+/* the live edits list sits on the dark side panel: light cards, like the notes below it */
+.live-feed { padding: 4px 0 12px; border-bottom: 1px solid var(--line); }
+.live-feed .lf-head { color: var(--mute); padding: 4px 4px 2px; }
+.live-feed .lf-item { background: #fff; color: #121212; box-shadow: 0 10px 22px -16px rgba(0,0,0,.35); }
+.live-feed .lf-item:hover { background: #f4f2ec; }
+.live-feed .lf-item span, .live-feed .lf-item q { color: #5f5c56; }

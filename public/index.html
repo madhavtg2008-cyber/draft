@@ -313,6 +313,7 @@
         <span class="tab-ink"></span>
       </nav>
       <div class="doc-right">
+        <div id="docLive" class="doc-live hidden" aria-label="Who's in this sheet"></div>
         <span id="docState" class="state"></span>
         <button id="fmtToggle" class="fmt-toggle" title="Show or hide the formatting toolbar">Format <i>▾</i></button>
         <select id="tbZoom" class="zoom" title="Zoom">
@@ -409,6 +410,7 @@
             <div class="editor rich" id="editor" contenteditable="true" spellcheck="true"></div>
           </div>
           <aside class="margin" id="margin">
+            <div id="liveFeed" class="live-feed hidden" aria-live="polite"></div>
             <div class="m-head"><span id="mTitle">Remarks</span><em id="mCount"></em><button type="button" id="mGeneral" class="m-plus" title="Add a remark that isn't tied to a passage">+ Remark</button></div>
             <!-- appears only when text is selected (or "+ Remark" is clicked), level with the selection -->
             <form id="mCompose" class="m-compose hidden">
@@ -464,5 +466,6 @@
   <script src="/plans.js"></script>
   <script src="/docs.js"></script>
   <script src="/tour.js"></script>
+  <script src="/live.js"></script>
 </body>
 </html>
