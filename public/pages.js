@@ -217,9 +217,10 @@ function applyZoom() {
   $('#tbZoom').value = mode;
   const g = pageGeom(), sc = $('#sheetScroll');
   const narrow = window.innerWidth < 900;
-  const marginW = narrow || $('#page').classList.contains('no-margin') ? 0 : 340;
+  const marginW = narrow || $('#page').classList.contains('no-margin') || $('#page').classList.contains('margin-off') ? 0 : 340;
   const availW = sc.clientWidth - 56 - marginW, availH = sc.clientHeight - 48;
-  let z = mode === 'page' ? availH / g.h : mode === 'width' ? Math.min(1.6, availW / g.w) : Number(mode) || 1;
+  // "Fit width" stops short of the edges, so the page sits centred with room either side
+  let z = mode === 'page' ? availH / g.h : mode === 'width' ? Math.min(marginW ? 1.2 : 1.45, (availW * 0.94) / g.w) : Number(mode) || 1;
   if (narrow) z = Math.min(z, (sc.clientWidth - 24) / g.w);
   $('#paperCol').style.zoom = String(Math.max(0.3, Math.round(z * 100) / 100));
 }
@@ -229,6 +230,22 @@ $('#tbZoom').addEventListener('change', (e) => {
   layoutPages();
 });
 window.addEventListener('resize', () => { if (state.lane) { applyZoom(); layoutPagesSoon(); } });
+
+// ---------- the remarks fold away to the side, and come back with one click ----------
+function applyMarginFold() {
+  const off = lsGet('lex_margin_off') === '1';
+  $('#page').classList.toggle('margin-off', off);
+  const n = (state.cur?.comments || []).filter((c) => c.lane === state.lane).length;
+  $('#mShowLabel').textContent = state.lane === 'team' ? 'Notes' : 'Remarks';
+  $('#mShowCount').textContent = n || '';
+}
+function foldMargin(off) {
+  lsSet('lex_margin_off', off ? '1' : '0');
+  applyMarginFold();
+  if (state.lane) { applyZoom(); layoutPagesSoon(); if (!off && typeof layoutMargin === 'function') layoutMargin(); }
+}
+$('#mHide').addEventListener('click', () => foldMargin(true));
+$('#mShow').addEventListener('click', () => foldMargin(false));
 
 // ---------- the formatting toolbar folds away to give the page more room ----------
 function applyFormatBar() {

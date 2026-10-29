@@ -7,7 +7,7 @@
 //   · the paragraphs someone else just changed, tinted in their colour with "Edited by …", fading after a while;
 //   · a short list of the latest edits ("Live edits") above the remarks — click one to jump to it.
 
-const LIVE_MS = 2000;
+const LIVE_MS = 1000; // with a sheet open; every 3 seconds on the matter's desk
 const LIVE_BLOCKS = 'p,h1,h2,h3,h4,h5,h6,li,blockquote,pre';
 const live = { busy: false, typedAt: 0, lane: null, seen: {}, texts: null, marks: [], feed: [] };
 
@@ -41,7 +41,8 @@ async function liveTick() {
   } catch { /* offline for a moment: try again next tick */ }
   finally { live.busy = false; }
 }
-setInterval(liveTick, LIVE_MS);
+let liveCount = 0;
+setInterval(() => { if (state.lane || ++liveCount % 3 === 0) liveTick(); }, LIVE_MS);
 const publicMe = () => ({ id: state.me.id, name: state.me.name, color: state.me.color });
 
 // someone else changed a sheet, a remark or the matter: bring it in, and show what changed and who did it
@@ -115,7 +116,10 @@ function placeMarks() {
   }).join('');
   const people = (live.people || []).filter((p) => p.lane === state.lane && p.para !== null).map((p) => {
     const q = at(p.para);
-    return q ? `<div class="lv-here${p.typing ? ' typing' : ''}" style="--c:${p.color};top:${q.top}px;height:${q.height}px;left:${q.left - 16}px"><span class="lv-name">${esc(p.name.split(' ')[0])}${p.typing ? ' ✎' : ''}</span></div>` : '';
+    if (!q) return '';
+    const first = esc(p.name.split(' ')[0]);
+    return (p.typing ? `<div class="lv-typing" style="--c:${p.color};top:${q.top - 3}px;height:${q.height + 6}px;left:${q.left - 8}px;width:${q.width + 16}px"></div>` : '')
+      + `<div class="lv-here${p.typing ? ' typing' : ''}" style="--c:${p.color};top:${q.top}px;height:${q.height}px;left:${q.left - 16}px"><span class="lv-name">${p.typing ? `${first} is typing…` : first}</span></div>`;
   }).join('');
   layer.innerHTML = edits + people;
 }

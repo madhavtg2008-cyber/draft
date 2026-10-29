@@ -441,6 +441,42 @@ function cleanupOps(ops, A, B) {
 
 // Fold a new working text into the stream, attributing every change to `authorId`.
 // The Team Head's edits are confirmed immediately.
+// Two people editing at once: each saves "what I started from" (base) and "what I have now" (mine),
+// while the sheet may already hold someone else's newer save (theirs). Merge word by word: keep both
+// people's changes; only where both changed the very same words does the later save win.
+function changeRuns(ops, B) {
+  const runs = [];
+  let cur = null, at = 0;
+  for (const [op, a, b] of ops) {
+    if (op === '=') { if (cur) { runs.push(cur); cur = null; } at = a + 1; continue; }
+    if (!cur) cur = { s: op === '-' ? a : at, e: op === '-' ? a : at, ins: [] };
+    if (op === '-') { cur.e = a + 1; at = a + 1; } else cur.ins.push(B[b]);
+  }
+  if (cur) runs.push(cur);
+  return runs;
+}
+function merge3(base, mine, theirs) {
+  const O = tokenize(base), M = tokenize(mine), T = tokenize(theirs);
+  const all = [...changeRuns(diffOps(O, T), T).map((x) => ({ ...x, me: false })), ...changeRuns(diffOps(O, M), M).map((x) => ({ ...x, me: true }))]
+    .sort((x, y) => x.s - y.s || (x.me ? 1 : -1)); // at the same spot: their insertion first, then mine
+  const out = [];
+  let pos = 0;
+  for (let i = 0; i < all.length;) {
+    const group = [all[i]];
+    let end = all[i].e;
+    while (i + group.length < all.length && all[i + group.length].s < end) { end = Math.max(end, all[i + group.length].e); group.push(all[i + group.length]); }
+    i += group.length;
+    const clash = group.some((x) => x.me) && group.some((x) => !x.me);
+    for (const x of clash ? group.filter((y) => y.me) : group) {
+      if (x.s < pos) continue; // overlaps a change already applied
+      out.push(...O.slice(pos, x.s), ...x.ins);
+      pos = x.e;
+    }
+  }
+  out.push(...O.slice(pos));
+  return out.join('');
+}
+
 function applyEdit(stream, text, authorId, isHead) {
   const live = [];
   stream.forEach((tok, i) => { if (!tok.d) live.push(i); });
@@ -1124,8 +1160,12 @@ app.delete('/api/drafts/:id', auth, headOnly, loadDraft, (req, res) => {
 app.put('/api/drafts/:id/lanes/:lane', auth, loadDraft, laneParam, (req, res) => {
   const { lane } = req.params;
   if (!canEditLane(req.user, req.draft, lane)) return res.status(403).json({ error: 'You cannot edit this draft' });
-  const content = clean(req.body?.content ?? '');
   const prev = latest(req.draft.id, lane);
+  let content = clean(req.body?.content ?? '');
+  // someone else saved since this person loaded the sheet: fold their changes in rather than undo them
+  const base = typeof req.body?.base === 'string' ? clean(req.body.base) : null;
+  let merged = false;
+  if (base !== null && prev && prev.content !== base && prev.content !== content) { content = clean(merge3(base, content, prev.content)); merged = true; }
   // a note marks a deliberate step (e.g. "Imported Lease.docx") as its own version
   const note = req.body?.note ? String(req.body.note).slice(0, 140) : null;
   const setup = cleanPage(req.body?.page); // an imported Word file brings its own page size & margins
@@ -1136,7 +1176,7 @@ app.put('/api/drafts/:id/lanes/:lane', auth, loadDraft, laneParam, (req, res) =>
     else if (!prev || prev.author_id !== req.user.id || now() - prev.updated_at > 120000) logActivity(req.draft.id, lane, `edited the ${lane} draft`, req.user.id);
     laneChanged(req.draft.id, lane, req.user);
   }
-  res.json({ lane: laneInfo(req.user, req.draft, lane) });
+  res.json({ lane: laneInfo(req.user, req.draft, lane), merged });
 });
 
 // Team Head confirms or rejects pending changes: one hunk, or all of them

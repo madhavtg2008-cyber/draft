@@ -402,6 +402,7 @@
 
     <div class="doc-scroll">
       <div class="page" id="page">
+        <button type="button" id="mShow" class="m-show" title="Show the remarks">‹ <span id="mShowLabel">Remarks</span> <em id="mShowCount"></em></button>
         <!-- the document and its remarks share one sheet: text on the left, remarks in the margin -->
         <div class="sheet-scroll view-text" id="sheetScroll">
           <!-- real pages: white sheets (with page numbers) behind the text, laid out to the document's page size -->
@@ -411,7 +412,7 @@
           </div>
           <aside class="margin" id="margin">
             <div id="liveFeed" class="live-feed hidden" aria-live="polite"></div>
-            <div class="m-head"><span id="mTitle">Remarks</span><em id="mCount"></em><button type="button" id="mGeneral" class="m-plus" title="Add a remark that isn't tied to a passage">+ Remark</button></div>
+            <div class="m-head"><span id="mTitle">Remarks</span><em id="mCount"></em><button type="button" id="mGeneral" class="m-plus" title="Add a remark that isn't tied to a passage">+ Remark</button><button type="button" id="mHide" class="m-hide" title="Hide the remarks">Hide ›</button></div>
             <!-- appears only when text is selected (or "+ Remark" is clicked), level with the selection -->
             <form id="mCompose" class="m-compose hidden">
               <div id="mQuote" class="m-quote hidden"></div>

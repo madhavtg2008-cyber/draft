@@ -9,7 +9,7 @@ const LANE = {
 };
 const STATUSES = [['drafting', 'Drafting'], ['client_review', 'Review'], ['negotiation', 'Negotiation'], ['approved', 'Approved'], ['executed', 'Executed']];
 const statusLabel = (s) => (STATUSES.find(([k]) => k === s) || [, s])[1];
-const AUTOSAVE_MS = 800;
+const AUTOSAVE_MS = 450; // short, so others see each edit almost as it's typed
 const HOLD_MS = 800;
 
 const state = {
@@ -673,6 +673,7 @@ function renderMargin() {
   const list = state.cur.comments.filter((c) => c.lane === lane);
   $('#mTitle').textContent = lane === 'team' ? 'Internal notes' : 'Remarks';
   $('#mCount').textContent = list.length || '';
+  if (typeof applyMarginFold === 'function') applyMarginFold();
   $('#mCompose').body.placeholder = lane === 'team' ? 'Note to the team…' : 'Add a remark…';
   $('#mList').innerHTML = list.map((c) => `
     <div class="m-card" data-id="${c.id}" style="--c:${c.author_color}">
@@ -826,11 +827,16 @@ async function save() {
   const content = docHtml();
   setDocState('Saving…');
   try {
-    const r = await api('PUT', `/api/drafts/${draftId}/lanes/${lane}`, { content });
+    // "base" is the text this person started from, so the server can fold in anyone else's edits made meanwhile
+    const r = await api('PUT', `/api/drafts/${draftId}/lanes/${lane}`, { content, base: state.loaded });
     if (state.cur?.draft.id !== draftId) return;
     state.cur.lanes[lane] = r.lane;
-    state.loaded = r.lane.content;
-    if (state.lane === lane && docHtml() === content) { state.dirty = false; idleState(); }
+    if (state.lane === lane && docHtml() === content) {
+      state.dirty = false;
+      if (r.merged) renderDoc({ fromServer: true }); // someone else's edits were folded in: show them (keeps the cursor)
+      else state.loaded = r.lane.content;
+      idleState();
+    } else state.loaded = r.lane.content;
     renderDesk();
     if (state.lane === lane) {
       $('#tabChanges').textContent = r.lane.pending || '';
@@ -845,7 +851,7 @@ async function save() {
 document.addEventListener('visibilitychange', () => { if (document.hidden) save(); });
 window.addEventListener('beforeunload', () => {
   if (state.dirty && state.cur && state.lane)
-    fetch(`/api/drafts/${state.cur.draft.id}/lanes/${state.lane}`, { method: 'PUT', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: docHtml() }) });
+    fetch(`/api/drafts/${state.cur.draft.id}/lanes/${state.lane}`, { method: 'PUT', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: docHtml(), base: state.loaded }) });
 });
 
 // ---------- Save as Word ----------
