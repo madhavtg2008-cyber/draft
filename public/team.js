@@ -27,14 +27,13 @@ function renderTeam() {
       <div class="tp-top">
         <span class="avatar" style="--c:${u.color}">${initials(u.name)}</span>
         <div class="tp-who"><b>${esc(u.name)}${u.id === state.me.id ? ' <small>(you)</small>' : ''}</b><small>${esc(u.email)}</small></div>
-        <span class="tp-role">${u.seat === 'pending' ? 'Awaiting payment' : u.head ? 'Team Head' : u.active ? 'Associate' : 'Invited'}</span>
+        <span class="tp-role">${u.head ? 'Team Head' : u.active ? 'Associate' : 'Invited'}</span>
       </div>
       ${u.head ? '<p class="tp-note">Can do everything.</p>' : `
       <div class="tp-perms">
         ${toggle(u, 'perm_upload', 'Upload to the clean draft', 'Upload the team draft to the clean draft without asking the Team Head')}
         ${toggle(u, 'perm_confirm', 'Confirm changes', "Confirm or reject other people's edits; their own edits need no confirming")}
       </div>
-      ${head && u.seat === 'pending' ? `<button class="tp-pay" data-pay="${u.id}">Pay ₹${state.me.firm?.price || 250} &amp; send invite</button>` : ''}
       ${head ? `<button class="tp-remove" data-remove="${u.id}">Remove from team</button>` : ''}`}
     </div>`).join('') || '<p class="tp-note">No one yet.</p>';
 }
@@ -64,7 +63,7 @@ $('#tpAdd').addEventListener('submit', async (e) => {
   const f = e.target.elements;
   try {
     await api('POST', '/api/team', { name: f.name.value, email: f.email.value });
-    $('#tpMsg').textContent = `Added. Pay for ${f.name.value}'s seat below — their invite email goes out as soon as it's paid.`;
+    $('#tpMsg').textContent = `Added. ${f.name.value} has been emailed an invite to join your firm on Zoit.`;
     e.target.reset();
     loadTeam();
   } catch (err) { $('#tpMsg').textContent = err.message; }
@@ -84,8 +83,6 @@ $('#tpList').addEventListener('change', async (e) => {
 
 // remove from team — asks first
 $('#tpList').addEventListener('click', async (e) => {
-  const pay = e.target.closest('[data-pay]');
-  if (pay) return payForSeats([Number(pay.dataset.pay)], pay); // plans.js
   const b = e.target.closest('[data-remove]');
   if (!b) return;
   if (!b.classList.contains('armed')) {

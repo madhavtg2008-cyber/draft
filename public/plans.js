@@ -42,9 +42,9 @@ $('#chooseForm').addEventListener('submit', async (e) => {
 });
 $('#chooseBack').addEventListener('click', endChoose);
 
-// ---------- billing: the firm's plan and every lawyer's seat ----------
-// Every lawyer, the Team Head included, has a paid seat. A Team Head whose own seat isn't paid sees
-// this as a full screen ("Activate Zoit") until it is; associates get their invite once theirs is paid.
+// ---------- billing: the firm's plan (the Team Head's seat; associates are free) ----------
+// Only the Team Head's seat is paid. A Team Head whose own seat isn't paid sees
+// this as a full screen ("Activate Zoit") until it is; until then their associates can only look.
 const planPanel = $('#planPanel');
 let billing = null;
 const rupees = (n) => `₹${Number(n).toLocaleString('en-IN')}`;
@@ -60,27 +60,27 @@ function renderPlans() {
   $('#plTitle').textContent = gate ? 'Activate Zoit' : 'Billing';
   const plan = billing.plans.find((p) => p.id === f.plan);
   $('#plUsage').innerHTML = gate
-    ? `<p class="pl-intro">Every lawyer at ${esc(f.name)} has their own seat. Choose a plan and pay for your seat to start using Zoit — then add your associates.</p>`
-    : `<div><b>${f.activeSeats}</b> paid seat${f.activeSeats === 1 ? '' : 's'}</div>${f.pendingSeats ? `<div><b>${f.pendingSeats}</b> waiting for payment</div>` : ''}<div><b>${rupees(f.total)}</b> per ${plan.cycle}</div>`;
-  // the plan, monthly or yearly — per lawyer
+    ? `<p class="pl-intro">Choose a plan and pay for your seat to start using Zoit. Adding associates is free.</p>`
+    : `<div><b>${rupees(f.total)}</b> per ${plan.cycle}</div><div><b>${f.seats}</b> lawyer${f.seats === 1 ? '' : 's'} · associates are free</div>`;
+  // the plan, monthly or yearly — for the Team Head's seat; associates are free
   const card = (p) => `<button class="pl-opt${p.id === f.plan ? ' on' : ''}" data-plan="${p.id}" ${head ? '' : 'disabled'}>
       <span class="pl-opt-name">${p.name} <small>${p.cycle === 'year' ? 'yearly' : 'monthly'}</small></span>
-      <span class="pl-opt-price">${rupees(p.price)}<small> / lawyer / ${p.cycle}</small></span>
+      <span class="pl-opt-price">${rupees(p.price)}<small> / ${p.cycle}</small></span>
       ${p.cycle === 'year' ? `<span class="pl-save">${rupees(p.price / 12 | 0)} a month</span>` : ''}
     </button>`;
   const pro = billing.plans.find((p) => p.perks);
-  const seats = billing.seats.map((x) => `<div class="pl-seat">
+  const seats = billing.seats.filter((x) => x.head).map((x) => `<div class="pl-seat">
       <div><b>${esc(x.name)}${x.id === state.me.id ? ' <small>(you)</small>' : ''}</b><small>${x.head ? 'Team Head' : 'Associate'} · ${esc(x.email)}</small></div>
       ${x.status === 'active'
         ? `<span class="pl-state on">Active${x.until ? ` · until ${new Date(x.until).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}</span>`
-        : head ? `<button class="pl-pay" data-pay="${x.id}">Pay ${rupees(plan.price)}${x.head ? '' : ' &amp; send invite'}</button>` : '<span class="pl-state">Waiting for payment</span>'}
+        : head ? `<button class="pl-pay" data-pay="${x.id}">Pay ${rupees(plan.price)}</button>` : '<span class="pl-state">Waiting for payment</span>'}
     </div>`).join('');
   $('#plList').innerHTML = `
-    <div class="pl-label">Plan <small>per lawyer</small></div>
+    <div class="pl-label">Plan <small>for the Team Head · associates free</small></div>
     <div class="pl-opts">${billing.plans.map(card).join('')}</div>
     ${pro?.perks ? `<p class="pl-perks">Pro adds: ${pro.perks.join(' · ')}</p>` : ''}
-    <div class="pl-label">${gate ? 'Your seat' : 'Seats'}</div>
-    <div class="pl-seats">${gate ? seats.split('<div class="pl-seat">').filter((x) => x.includes('(you)')).map((x) => '<div class="pl-seat">' + x).join('') : seats}</div>
+    <div class="pl-label">Your seat</div>
+    <div class="pl-seats">${seats}</div>
     ${gate ? '<button class="pl-out" id="plSignOut" type="button">Sign out</button>' : ''}`;
   $('#plMsg').textContent = head ? '' : 'Only the Team Head manages billing.';
 }

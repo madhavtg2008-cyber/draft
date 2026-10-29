@@ -178,7 +178,7 @@ async function showApp() {
   $('#matterTitle').contentEditable = me.role === 'team' ? 'plaintext-only' : 'false';
   // an associate whose seat isn't paid can look around; one with no firm yet waits to be added
   $('#viewOnly').classList.toggle('hidden', !(me.role === 'team' && !me.head && me.seat === 'pending'));
-  $('#viewOnly').textContent = me.firm ? "View only — your Team Head hasn't paid for your seat yet. You can look around; editing opens once it's paid."
+  $('#viewOnly').textContent = me.firm ? "View only — your firm's Zoit plan isn't active yet. You can look around; editing opens once your Team Head activates it."
     : `You're not in a firm yet. Ask your Team Head to add ${me.email} in their Team panel — you'll see your firm's matters here once they do.`;
   if (me.role === 'team' && me.head && me.seat === 'pending') { showEmpty(); return openPlans(); } // seat not paid yet: Activate Zoit (plans.js)
   await loadDrafts();

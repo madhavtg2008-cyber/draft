@@ -215,16 +215,19 @@ const publicUser = (u) => u && ({ id: u.id, name: u.name, email: u.email, role: 
 // ---------- seats: every lawyer (the Team Head too) is ₹250 a month ----------
 // A firm's lawyers can only use Zoit while their seat is active. An associate's invite email
 // goes out only once their seat has been paid for.
-const seatActive = (u) => !u || u.role !== 'team' || u.seat_status === 'active';
+// associates are free, but only work while their firm's Team Head has a paid seat
+const seatActive = (u) => !u || u.role !== 'team' || (u.seat_status === 'active' && (u.head || !u.firm_id
+  || !!db.prepare("SELECT 1 FROM users WHERE firm_id = ? AND head = 1 AND disabled = 0 AND seat_status = 'active'").get(u.firm_id)));
 const firmSeats = (firmId) => db.prepare("SELECT id, name, email, head, seat_status, seat_until, invite_sent, pass_hash FROM users WHERE role = 'team' AND disabled = 0 AND firm_id = ? ORDER BY head DESC, name").all(firmId)
   .map((x) => ({ id: x.id, name: x.name, email: x.email, head: !!x.head, status: x.seat_status === 'active' ? 'active' : 'pending', until: x.seat_until, inviteSent: !!x.invite_sent, joined: !!x.pass_hash }));
 function firmInfo(u) {
   if (u?.role !== 'team' || !u.firm_id) return null;
   const f = getFirm(u.firm_id), seats = firmSeats(f.id);
   const active = seats.filter((x) => x.status === 'active').length, p = planOf(f);
-  return { id: f.id, name: f.name, plan: p.id, planName: p.name, cycle: p.cycle, price: p.price, seats: seats.length, activeSeats: active, pendingSeats: seats.length - active, total: active * p.price };
+  const paid = seats.filter((x) => x.head && x.status === 'active').length; // only the Team Head's seat is paid; associates are free
+  return { id: f.id, name: f.name, plan: p.id, planName: p.name, cycle: p.cycle, price: p.price, seats: seats.length, activeSeats: active, pendingSeats: seats.length - active, total: paid * p.price };
 }
-// mark a seat paid (for a month); an associate gets their invite email at this point
+// mark a seat active (a Team Head's for the plan's period); an associate gets their invite email at this point
 function activateSeat(uid, origin, days) {
   const u = getUser(uid);
   if (!u || u.role !== 'team') return null;
@@ -235,7 +238,7 @@ function activateSeat(uid, origin, days) {
     const head = db.prepare('SELECT name FROM users WHERE firm_id = ? AND head = 1').get(u.firm_id);
     sendMail({
       to: u.email, subject: 'You have been added to Zoit',
-      heading: 'Welcome to the team', lines: [`Dear ${u.name},`, `${head?.name || 'Your Team Head'} has added you to ${getFirm(u.firm_id)?.name || 'the firm'} on Zoit.`, u.pass_hash ? 'Your seat is paid — sign in to Zoit and start drafting with your team.' : 'Open Zoit and sign in with this email address — choose "Set up account" if you have not made one yet, or just continue with Google.'],
+      heading: 'Welcome to the team', lines: [`Dear ${u.name},`, `${head?.name || 'Your Team Head'} has added you to ${getFirm(u.firm_id)?.name || 'the firm'} on Zoit.`, u.pass_hash ? 'Sign in to Zoit and start drafting with your team.' : 'Open Zoit and sign in with this email address — choose "Set up account" if you have not made one yet, or just continue with Google.'],
       button: 'Set up my account', url: origin || process.env.PUBLIC_URL || 'https://zoit.in',
     });
     db.prepare('UPDATE users SET invite_sent = 1 WHERE id = ?').run(uid);
@@ -765,6 +768,7 @@ if (db.prepare("SELECT 1 FROM users WHERE role = 'team' AND firm_id IS NULL").ge
 
 // lawyers who were already using Zoit before seats were introduced keep working
 db.prepare("UPDATE users SET seat_status = 'active' WHERE role = 'team' AND seat_status IS NULL").run();
+db.prepare("UPDATE users SET seat_status = 'active' WHERE role = 'team' AND head = 0 AND firm_id IS NOT NULL AND seat_status != 'active'").run(); // associates are free
 
 // ---------- realtime (Server-Sent Events) ----------
 const streams = new Set(); // { res, user, draftId }
@@ -887,7 +891,7 @@ app.post('/api/auth/login', (req, res) => {
 });
 // a lawyer tries to join their firm before the Team Head has added them
 // an associate added by their Team Head, whose seat hasn't been paid for yet
-const VIEW_ONLY = "View only — your Team Head hasn't paid for your seat yet.";
+const VIEW_ONLY = "View only — your firm's Zoit plan isn't active yet. Ask your Team Head to activate it.";
 const NO_FIRM = "You're not in a firm yet — ask your Team Head to add your email in their Team panel.";
 // an associate's own account, before any firm has added them
 const createAssociate = (name, email, passHash) => db.prepare("INSERT INTO users (name, email, role, title, color, pass_hash, firm_id, seat_status, created_at) VALUES (?,?,'team','Associate',?,?,NULL,'pending',?)")
@@ -1602,11 +1606,12 @@ app.post('/api/team', auth, headOnly, (req, res) => {
   const existing = userByEmail(email);
   if (existing?.role === 'team' && !existing.disabled && !existing.firm_id) { // made their own account: bring them in
     db.prepare("UPDATE users SET firm_id = ?, head = 0, seat_status = 'pending', invite_sent = 0 WHERE id = ?").run(req.user.firm_id, existing.id);
-    return res.json({ ok: true, pending: true, id: existing.id, price: planOf(getFirm(req.user.firm_id)).price });
+    activateSeat(existing.id, originOf(req));
+    return res.json({ ok: true, id: existing.id });
   }
   if (existing?.role === 'team' && !existing.disabled) return res.status(409).json({ error: existing.firm_id === req.user.firm_id ? 'They are already on the team' : 'That person already belongs to another firm on Zoit' });
   if (existing && existing.role !== 'team') return res.status(409).json({ error: 'That email belongs to a client account' });
-  // their seat starts unpaid: no email and no access until the Team Head pays for it
+  // associates are free: they're in straight away and get their invite email now
   let uid;
   if (existing) { // someone removed earlier: bring them back into this firm
     db.prepare("UPDATE users SET name = ?, disabled = 0, head = 0, firm_id = ?, seat_status = 'pending', invite_sent = 0 WHERE id = ?").run(name, req.user.firm_id, existing.id);
@@ -1615,7 +1620,8 @@ app.post('/api/team', auth, headOnly, (req, res) => {
     uid = db.prepare("INSERT INTO users (name, email, role, title, color, pass_hash, firm_id, seat_status, created_at) VALUES (?,?,?,?,?,?,?,'pending',?)")
       .run(name, email, 'team', String(req.body?.title || 'Associate').slice(0, 60), nextColor(), '', req.user.firm_id, now()).lastInsertRowid;
   }
-  res.json({ ok: true, pending: true, id: uid, price: planOf(getFirm(req.user.firm_id)).price });
+  activateSeat(uid, originOf(req));
+  res.json({ ok: true, id: uid });
 });
 
 // ---------- sign in with Google / Apple ----------
@@ -1691,7 +1697,7 @@ app.post('/api/billing/pay', auth, headOnly, (req, res) => {
   const mine = firmSeats(req.user.firm_id).filter((x) => ids.includes(x.id));
   if (!mine.length) return res.status(400).json({ error: 'Choose whose seat to pay for' });
   if (!PAYMENTS_READY && !DEMO) {
-    return res.status(501).json({ error: 'Online payment is being set up. To activate now, pay Zoit directly and your seats will be switched on — the invite emails go out as soon as they are.', manual: true });
+    return res.status(501).json({ error: 'Online payment is being set up. To activate now, pay Zoit directly and your seat will be switched on.', manual: true });
   }
   for (const x of mine) activateSeat(x.id, originOf(req));
   res.json({ user: meUser(getUser(req.user.id)), seats: firmSeats(req.user.firm_id) });
