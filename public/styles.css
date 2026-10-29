@@ -1079,3 +1079,16 @@ body.role-client #fmtToggle,
 body.role-client #toolbar,
 body.role-client #tbZoom { display: none !important; }
 body.role-client .desk { grid-template-columns: repeat(2, minmax(0, 340px)); justify-content: center; }
+
+/* New draft / New document: a roomy panel that slides out beside the side bar, instead of squeezing into it */
+.rail .new-form:not(.hidden) { position: fixed; top: 0; bottom: 0; left: 248px; z-index: 60; width: 440px; max-width: calc(100vw - 248px); max-height: none;
+  align-content: start; gap: 12px; padding: 34px 34px 28px; overflow-y: auto; background: var(--night); border-right: 1px solid var(--line);
+  box-shadow: 30px 0 60px -30px rgba(0,0,0,.6); animation: slideIn .35s var(--ease); }
+.rail .new-form .nf-label { margin-top: 12px; font-size: 10.5px; }
+.rail .new-form .nf-label:first-child, .rail .new-form > label:first-child { margin-top: 0; font: 600 24px var(--serif); letter-spacing: 0; text-transform: none; color: var(--chalk); margin-bottom: 6px; }
+.rail .new-form input, .rail .new-form select { padding: 12px 14px; font-size: 14px; }
+.rail .new-form .nf-drop { padding: 22px 14px; font-size: 13px; }
+.rail .new-form .row { margin-top: 14px; padding-top: 18px; border-top: 1px solid var(--line); }
+.rail .new-form .row .btn-primary.sm { padding: 11px 22px; }
+@media (max-width: 1280px) { .rail .new-form:not(.hidden) { left: 200px; max-width: calc(100vw - 200px); } }
+@media (max-width: 900px) { .rail .new-form:not(.hidden) { left: 0; width: 100%; max-width: 100%; padding: 26px 16px; } }
