@@ -979,11 +979,118 @@ app.post('/api/me/tour', auth, (req, res) => {
   db.prepare('UPDATE users SET tour_done = ? WHERE id = ?').run(req.body?.done === false ? 0 : 1, req.user.id);
   res.json({ ok: true });
 });
+// ---------- Clients: the firm's file explorer (clients › folders › folders… › drafts) ----------
+// Each client has its own space; inside it, folders can hold folders and drafts, as deep as needed.
+// A draft (a matter, with its three sheets) sits in one place: a client's space, or a folder in it.
+// Drafts with no client live under "No client". Lawyers make, rename and move things; only the
+// Team Head deletes, and associates can't rename or move what the Team Head made.
+db.exec(`CREATE TABLE IF NOT EXISTS firm_clients (firm_id INTEGER NOT NULL, client_id INTEGER NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (firm_id, client_id))`);
+db.exec(`CREATE TABLE IF NOT EXISTS folders (id INTEGER PRIMARY KEY AUTOINCREMENT, firm_id INTEGER NOT NULL, client_id INTEGER, parent_id INTEGER,
+  name TEXT NOT NULL, created_by INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`);
+try { db.exec('ALTER TABLE drafts ADD COLUMN folder_id INTEGER'); } catch { /* already there */ }
+
+const getFolder = (id) => db.prepare('SELECT * FROM folders WHERE id = ?').get(Number(id));
+const folderOk = (f, user) => f && f.firm_id === user.firm_id;
+// every folder inside this one, at any depth (and this one)
+function folderTree(id) {
+  const out = [id];
+  for (let i = 0; i < out.length; i++) for (const c of db.prepare('SELECT id FROM folders WHERE parent_id = ?').all(out[i])) out.push(c.id);
+  return out;
+}
+
+app.get('/api/explorer', auth, teamOnly, (req, res) => {
+  const fid = req.user.firm_id;
+  const drafts = db.prepare(`SELECT d.id, d.title, d.matter_no, d.status, d.client_id, d.folder_id, d.created_by, d.updated_at, d.created_at, d.sample,
+      u.name AS creator, (SELECT COUNT(*) FROM drafts x WHERE x.parent_id = d.id) AS docs
+    FROM drafts d LEFT JOIN users u ON u.id = d.created_by WHERE d.firm_id = ? AND d.parent_id IS NULL ORDER BY d.updated_at DESC`).all(fid);
+  const clients = db.prepare(`SELECT id, name, email, title, color, pass_hash != '' AND pass_hash != '!sample' AS active, created_at FROM users WHERE role = 'client' AND (
+      id IN (SELECT client_id FROM firm_clients WHERE firm_id = ?) OR id IN (SELECT client_id FROM drafts WHERE firm_id = ? AND client_id IS NOT NULL)) ORDER BY name COLLATE NOCASE`).all(fid, fid)
+    .map((c) => ({ ...c, email: /\.invalid$/i.test(c.email) ? '' : c.email }));
+  const folders = db.prepare('SELECT f.*, u.name AS creator FROM folders f LEFT JOIN users u ON u.id = f.created_by WHERE f.firm_id = ? ORDER BY f.name COLLATE NOCASE').all(fid);
+  const heads = new Set(db.prepare('SELECT id FROM users WHERE firm_id = ? AND head = 1').all(fid).map((x) => x.id));
+  res.json({
+    clients,
+    folders: folders.map((f) => ({ id: f.id, clientId: f.client_id, parentId: f.parent_id, name: f.name, creator: f.creator, headMade: heads.has(f.created_by), updatedAt: f.updated_at })),
+    drafts: drafts.map((d) => ({ id: d.id, title: d.title, matterNo: d.matter_no, status: d.status, clientId: d.client_id, folderId: d.folder_id, creator: d.creator,
+      headMade: heads.has(d.created_by), docs: d.docs, updatedAt: d.updated_at, sample: !!d.sample })),
+  });
+});
+
+// a new client, straight into the explorer (no draft needed yet); email optional
+app.post('/api/clients', auth, teamOnly, (req, res) => {
+  const name = String(req.body?.name || '').trim().slice(0, 80);
+  if (!name) return res.status(400).json({ error: "Enter the client's name" });
+  if (isDemoFirm(req.user.firm_id)) return res.status(403).json({ error: 'This is the shared demo firm — sign up your own firm to add real clients.' });
+  let email = String(req.body?.email || '').toLowerCase().trim();
+  if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return res.status(400).json({ error: 'That email doesn’t look right' });
+  let client = email ? userByEmail(email) : null;
+  if (client && client.role !== 'client') return res.status(409).json({ error: 'That email belongs to a lawyer on Zoit' });
+  if (!client) {
+    if (!email) email = `client-${req.user.firm_id}-${crypto.randomBytes(5).toString('hex')}@zoit.invalid`; // no email yet: never mailed
+    const id = db.prepare('INSERT INTO users (name, email, role, title, color, pass_hash, created_at) VALUES (?,?,?,?,?,?,?)')
+      .run(name, email, 'client', String(req.body?.company || '').trim().slice(0, 120) || null, nextColor(), '', now()).lastInsertRowid;
+    client = getUser(id);
+  }
+  db.prepare('INSERT OR IGNORE INTO firm_clients (firm_id, client_id, created_at) VALUES (?,?,?)').run(req.user.firm_id, client.id, now());
+  res.json({ client: { id: client.id, name: client.name, title: client.title } });
+});
+
+// folders: make, rename, move, delete
+app.post('/api/folders', auth, teamOnly, (req, res) => {
+  const name = String(req.body?.name || '').trim().slice(0, 80);
+  if (!name) return res.status(400).json({ error: 'Give the folder a name' });
+  const parent = req.body?.parentId ? getFolder(req.body.parentId) : null;
+  if (req.body?.parentId && !folderOk(parent, req.user)) return res.status(404).json({ error: 'Folder not found' });
+  const clientId = parent ? parent.client_id : (req.body?.clientId ? Number(req.body.clientId) : null);
+  const siblings = db.prepare('SELECT name FROM folders WHERE firm_id = ? AND client_id IS ? AND parent_id IS ?').all(req.user.firm_id, clientId, parent?.id ?? null);
+  if (siblings.some((s) => s.name.toLowerCase() === name.toLowerCase())) return res.status(409).json({ error: 'There is already a folder with that name here' });
+  const t = now();
+  const id = db.prepare('INSERT INTO folders (firm_id, client_id, parent_id, name, created_by, created_at, updated_at) VALUES (?,?,?,?,?,?,?)')
+    .run(req.user.firm_id, clientId, parent?.id ?? null, name, req.user.id, t, t).lastInsertRowid;
+  if (clientId) db.prepare('INSERT OR IGNORE INTO firm_clients (firm_id, client_id, created_at) VALUES (?,?,?)').run(req.user.firm_id, clientId, t);
+  res.json({ folder: { id, name } });
+});
+app.patch('/api/folders/:id', auth, teamOnly, (req, res) => {
+  const f = getFolder(req.params.id);
+  if (!folderOk(f, req.user)) return res.status(404).json({ error: 'Folder not found' });
+  if (lockedForAssociate(req.user, f)) return res.status(403).json({ error: HEAD_ITEM });
+  const b = req.body || {};
+  if ('name' in b) {
+    const name = String(b.name || '').trim().slice(0, 80);
+    if (!name) return res.status(400).json({ error: 'Give the folder a name' });
+    db.prepare('UPDATE folders SET name = ?, updated_at = ? WHERE id = ?').run(name, now(), f.id);
+  }
+  if ('parentId' in b || 'clientId' in b) { // move: into another folder, or to the top of a client's space
+    const parent = b.parentId ? getFolder(b.parentId) : null;
+    if (b.parentId && !folderOk(parent, req.user)) return res.status(404).json({ error: 'Folder not found' });
+    if (parent && folderTree(f.id).includes(parent.id)) return res.status(400).json({ error: 'A folder can’t go inside itself' });
+    const clientId = parent ? parent.client_id : (b.clientId ? Number(b.clientId) : null);
+    db.prepare('UPDATE folders SET parent_id = ?, client_id = ?, updated_at = ? WHERE id = ?').run(parent?.id ?? null, clientId, now(), f.id);
+    // everything inside moves with it to the same client
+    const ids = folderTree(f.id), ph = ids.map(() => '?').join(',');
+    db.prepare(`UPDATE folders SET client_id = ? WHERE id IN (${ph})`).run(clientId, ...ids);
+    db.prepare(`UPDATE drafts SET client_id = ? WHERE folder_id IN (${ph}) AND parent_id IS NULL`).run(clientId, ...ids);
+    if (clientId) for (const d of db.prepare(`SELECT id FROM drafts WHERE folder_id IN (${ph}) AND parent_id IS NULL`).all(...ids)) grantAccess(d.id, getUser(clientId).email, req.user.id);
+  }
+  res.json({ ok: true });
+});
+// delete a folder and everything in it — the Team Head only, for good
+app.delete('/api/folders/:id', auth, headOnly, (req, res) => {
+  const f = getFolder(req.params.id);
+  if (!folderOk(f, req.user)) return res.status(404).json({ error: 'Folder not found' });
+  const ids = folderTree(f.id), ph = ids.map(() => '?').join(',');
+  const matters = db.prepare(`SELECT id FROM drafts WHERE folder_id IN (${ph}) AND parent_id IS NULL`).all(...ids);
+  for (const m of matters) for (const x of matterDocs(m.id)) { broadcast(x.id, 'deleted', { by: req.user.name }); db.prepare('DELETE FROM drafts WHERE id = ?').run(x.id); }
+  db.prepare(`DELETE FROM folders WHERE id IN (${ph})`).run(...ids);
+  res.json({ ok: true, drafts: matters.length, folders: ids.length });
+});
+
 app.get('/api/clients', auth, teamOnly, (req, res) => {
   // only this firm's clients: people on its matters, or shared into them
   res.json({ clients: db.prepare(`SELECT id, name, email, title, color, pass_hash != '' AS active FROM users u WHERE role = 'client' AND pass_hash != '!sample' AND (
       id IN (SELECT client_id FROM drafts WHERE firm_id = ?)
-      OR email IN (SELECT a.email FROM matter_access a JOIN drafts d ON d.id = a.draft_id WHERE d.firm_id = ?)) ORDER BY name`).all(req.user.firm_id, req.user.firm_id) });
+      OR id IN (SELECT client_id FROM firm_clients WHERE firm_id = ?)
+      OR email IN (SELECT a.email FROM matter_access a JOIN drafts d ON d.id = a.draft_id WHERE d.firm_id = ?)) ORDER BY name`).all(req.user.firm_id, req.user.firm_id, req.user.firm_id) });
 });
 
 // --- drafts
@@ -1000,9 +1107,11 @@ app.get('/api/drafts', auth, (req, res) => {
 // Open a new matter. The client can be an existing one, or a brand-new client added right here:
 // they get an invited account and choose their own password the first time they sign up with that email.
 app.post('/api/drafts', auth, teamOnly, (req, res) => {
-  const { title, clientId, newClient, counterparty, contentHtml, sourceName, page, matterDate } = req.body || {};
+  const { title, clientId, newClient, counterparty, contentHtml, sourceName, page, matterDate, folderId } = req.body || {};
+  const folder = folderId ? getFolder(folderId) : null;
+  if (folderId && !folderOk(folder, req.user)) return res.status(404).json({ error: 'Folder not found' });
   if (!title || !String(title).trim()) return res.status(400).json({ error: 'Matter title is required' });
-  let cid = clientId ? Number(clientId) : null;
+  let cid = folder ? folder.client_id : clientId ? Number(clientId) : null; // in a folder: that folder's client
   if (cid && !db.prepare("SELECT 1 FROM users WHERE id = ? AND role = 'client'").get(cid)) return res.status(400).json({ error: 'Unknown client' });
   if (newClient?.name?.trim() && isDemoFirm(req.user.firm_id)) return res.status(403).json({ error: 'This is the shared demo firm — sign up your own firm (free) to invite real people.' });
   if (newClient?.name?.trim()) {
@@ -1020,6 +1129,8 @@ app.post('/api/drafts', auth, teamOnly, (req, res) => {
   const md = /^\d{4}-\d{2}-\d{2}$/.test(String(matterDate || '')) ? matterDate : null;
   const id = db.prepare('INSERT INTO drafts (title, matter_no, client_id, counterparty, page_setup, matter_date, status, created_by, firm_id, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
     .run(String(title).trim(), matterNo, cid, String(counterparty || '').trim() || null, setup ? JSON.stringify(setup) : null, md, 'drafting', req.user.id, req.user.firm_id, t, t).lastInsertRowid;
+  if (folder) db.prepare('UPDATE drafts SET folder_id = ? WHERE id = ?').run(folder.id, id);
+  if (cid) db.prepare('INSERT OR IGNORE INTO firm_clients (firm_id, client_id, created_at) VALUES (?,?,?)').run(req.user.firm_id, cid, t);
   const imported = contentHtml && clean(contentHtml).replace(/<[^>]+>/g, '').trim() ? clean(contentHtml) : null;
   const cl = cid ? getUser(cid) : null;
   const tpl = TEMPLATES.some((x) => x.id === req.body?.template) ? req.body.template : 'blank';
@@ -1120,6 +1231,15 @@ app.patch('/api/drafts/:id', auth, loadDraft, (req, res) => {
       db.prepare('UPDATE drafts SET doc_name = ? WHERE id = ?').run(n, doc.id);
     }
     if ('folder' in req.body) db.prepare('UPDATE drafts SET folder = ? WHERE id = ?').run(String(req.body.folder || '').trim().slice(0, 80) || null, doc.id);
+  }
+  if (('folderId' in b || 'moveClientId' in b) && req.user.role === 'team' && !doc.parent_id) {
+    if (lockedForAssociate(req.user, d)) return res.status(403).json({ error: HEAD_ITEM });
+    const folder = b.folderId ? getFolder(b.folderId) : null;
+    if (b.folderId && !folderOk(folder, req.user)) return res.status(404).json({ error: 'Folder not found' });
+    const cid = folder ? folder.client_id : (b.moveClientId ? Number(b.moveClientId) : null);
+    if (cid && !db.prepare("SELECT 1 FROM users WHERE id = ? AND role = 'client'").get(cid)) return res.status(400).json({ error: 'Unknown client' });
+    db.prepare('UPDATE drafts SET folder_id = ?, client_id = ?, updated_at = ? WHERE id = ?').run(folder?.id ?? null, cid, now(), d.id);
+    if (cid && cid !== d.client_id) grantAccess(d.id, getUser(cid).email, req.user.id);
   }
   // page size, orientation and margins (Page Setup and the ruler): this document's own
   if ('page' in b && req.user.role === 'team') {

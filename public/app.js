@@ -256,6 +256,11 @@ $('#newToggle').addEventListener('click', async () => {
   $('#clientSelect').innerHTML = '<option value="__new">＋ New client…</option><option value="">No client yet</option>'
     + clients.map((c) => `<option value="${c.id}">${esc(c.name)}${c.title ? ` · ${esc(c.title)}` : ''}${c.active ? '' : ' (invited)'}</option>`).join('');
   $('#clientSelect').value = clients.length ? String(clients[0].id) : ''; // a new firm starts with "No client yet"
+  // opened from Clients: that client (and folder) are already chosen
+  const pre = state.nfPreset;
+  state.nfPreset = null;
+  nf.elements.folderId.value = pre?.folderId || '';
+  if (pre) $('#clientSelect').value = pre.clientId ? String(pre.clientId) : '';
   toggleNewClient();
   $('#newToggle').classList.add('hidden');
   nf.classList.remove('hidden');
@@ -287,6 +292,7 @@ nf.addEventListener('submit', async (e) => {
   $('#nfError').textContent = '';
   try {
     const body = { title: f.title, counterparty: f.counterparty, template: f.template, matterDate: f.matterDate };
+    if (f.folderId) body.folderId = Number(f.folderId);
     if (f.clientId === '__new' && (f.ncName || f.ncEmail)) body.newClient = { name: f.ncName, company: f.ncCompany, email: f.ncEmail };
     else if (f.clientId) body.clientId = Number(f.clientId);
     if (nfFile) {
@@ -300,7 +306,7 @@ nf.addEventListener('submit', async (e) => {
     await openMatter(draft.id);
     ledger(`Matter ${draft.matter_no} opened${body.newClient ? ` for new client ${body.newClient.name}` : ''}.`);
   } catch (err) { $('#nfError').textContent = err.message; }
-  finally { submit.disabled = false; submit.textContent = 'Open matter'; }
+  finally { submit.disabled = false; submit.textContent = 'Open draft'; }
 });
 
 // ----- the matter (desk)

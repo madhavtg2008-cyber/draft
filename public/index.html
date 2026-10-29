@@ -128,12 +128,14 @@
   <section id="app" class="app hidden">
     <aside class="rail">
       <div class="rail-brand"><span class="mark sm">§</span>Zoit<button type="button" id="railMenu" class="rail-menu" aria-expanded="false" aria-label="Matters menu"><span id="railMenuLabel">Matters</span><i>☰</i></button></div>
+      <button type="button" id="clientsBtn" class="rail-clients team-only"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2.5 5.5a1.5 1.5 0 0 1 1.5-1.5h4l1.6 1.8H16a1.5 1.5 0 0 1 1.5 1.5v7.7A1.5 1.5 0 0 1 16 16.5H4A1.5 1.5 0 0 1 2.5 15z"/></svg>Clients</button>
       <div class="rail-label">Matters</div>
       <nav id="matterList" class="matters"></nav>
       <div class="team-only">
         <button id="newToggle" class="rail-new">+ New draft</button>
         <form id="newForm" class="new-form hidden">
           <label class="nf-label">New draft</label>
+          <input type="hidden" name="folderId" />
           <input name="title" required placeholder="Draft title, e.g. Share Purchase — Acme" />
           <input name="counterparty" placeholder="Other side (optional)" />
           <input name="matterDate" type="date" title="Matter date (optional) — hearing, deadline, signing…" />
@@ -175,12 +177,45 @@
     </aside>
 
     <main class="main">
+      <section id="explorer" class="explorer hidden" aria-label="Clients">
+        <header class="ex-top">
+          <button type="button" id="exUp" class="ex-up" title="Up one level (Backspace)">↑</button>
+          <nav id="exCrumbs" class="ex-crumbs"></nav>
+          <input id="exSearch" class="ex-search" type="search" placeholder="Search clients, folders and drafts" autocomplete="off" />
+        </header>
+        <div class="ex-tools">
+          <button type="button" id="exNewClient" class="ex-primary">＋ New client</button>
+          <button type="button" id="exNewFolder" class="ex-primary">＋ New folder</button>
+          <button type="button" id="exNewDraft" class="ex-btn">＋ New draft</button>
+          <button type="button" id="exUpload" class="ex-btn">Upload Word / PDF</button>
+          <input id="exFile" type="file" accept=".docx,.pdf" multiple hidden />
+          <div id="exSelBar" class="ex-selbar hidden"><span id="exSelName"></span>
+            <button type="button" id="exOpen">Open</button><button type="button" id="exRename">Rename</button>
+            <button type="button" id="exMove">Move to…</button><button type="button" id="exDelete" class="danger">Delete</button></div>
+          <div id="exConfirm" class="ex-confirm-bar hidden"><span id="exConfirmText"></span>
+            <button type="button" id="exConfirmYes" class="danger">Delete</button><button type="button" id="exConfirmNo">Cancel</button></div>
+          <span class="ex-tools-right">
+            <select id="exSort" title="Sort"><option value="name">Name</option><option value="modified">Last modified</option></select>
+            <button type="button" data-exview="grid" title="Grid">▦</button><button type="button" data-exview="list" title="List">☰</button>
+          </span>
+        </div>
+        <div class="ex-body">
+          <nav id="exTree" class="ex-tree" aria-label="Folders"></nav>
+          <div id="exItems" class="ex-items grid"></div>
+          <aside id="exMovePanel" class="ex-move hidden">
+            <header><div><small>Move</small><b id="exMoveName"></b></div><button type="button" id="exMoveClose" class="tp-close">✕</button></header>
+            <p>Choose where it goes:</p>
+            <div id="exMoveList" class="ex-move-list"></div>
+          </aside>
+        </div>
+      </section>
       <div id="emptyState" class="empty hidden"><div class="mark lg">§</div><p>Select a matter.</p></div>
 
       <div id="workspace" class="workspace hidden">
         <header class="caption">
           <div class="caption-left">
-            <div class="kicker">In the matter of</div>
+            <nav id="matterCrumbs" class="matter-crumbs team-only" aria-label="Where this draft lives"></nav>
+            <div class="kicker client-only">In the matter of</div>
             <h1 id="matterTitle" class="title" spellcheck="false"></h1>
             <div id="matterSub" class="sub"></div>
             <label class="mdate" title="The matter's date — hearing, deadline, signing…">
@@ -543,5 +578,6 @@
   <script src="/live.js"></script>
   <script src="/changes.js"></script>
   <script src="/docui.js"></script>
+  <script src="/explorer.js"></script>
 </body>
 </html>
