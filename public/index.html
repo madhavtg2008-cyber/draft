@@ -131,10 +131,10 @@
       <div class="rail-label">Matters</div>
       <nav id="matterList" class="matters"></nav>
       <div class="team-only">
-        <button id="newToggle" class="rail-new">+ New matter</button>
+        <button id="newToggle" class="rail-new">+ New draft</button>
         <form id="newForm" class="new-form hidden">
-          <label class="nf-label">Matter</label>
-          <input name="title" required placeholder="Matter title, e.g. Share Purchase — Acme" />
+          <label class="nf-label">Draft</label>
+          <input name="title" required placeholder="Draft title, e.g. Share Purchase — Acme" />
           <input name="counterparty" placeholder="Other side (optional)" />
           <input name="matterDate" type="date" title="Matter date (optional) — hearing, deadline, signing…" />
           <label class="nf-label">Client</label>
@@ -150,7 +150,7 @@
           <label class="nf-label">…or open a Word / PDF file</label>
           <label id="nfDrop" class="nf-drop"><input id="nfFile" type="file" accept=".docx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden /><span id="nfFileName">Drop a Word or PDF file, or click — optional</span></label>
           <div id="nfError" class="nf-error"></div>
-          <div class="row"><button type="button" id="newCancel" class="link">Cancel</button><button class="btn-primary sm" type="submit">Open matter</button></div>
+          <div class="row"><button type="button" id="newCancel" class="link">Cancel</button><button class="btn-primary sm" type="submit">Open draft</button></div>
         </form>
       </div>
       <div class="team-only">
